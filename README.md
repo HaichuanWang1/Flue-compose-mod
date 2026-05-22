@@ -1,8 +1,8 @@
 # Flue-compose
 
-Flue-compose 项目已停止维护，中考结束后将重构 Flue-next。
+Flue 项目已停止维护，中考结束后将重构 Flue-next。
 
-`Flue-compose` 是一个面向 Android 手表的 Compose 启动器公开版仓库，目标是保留 Flue 的主要桌面、应用列表、通知和表盘体验，同时把适合公开发布的代码、文档和构建配置整理出来。
+`Flue-compose` 是一个面向 Android 手表的 Compose 启动器公开版仓库。
 
 ~~⚠️内含大量史山以及vibe coding出来的低质量代码，高血压患者慎入！！~~
 
@@ -10,15 +10,13 @@ Flue-compose 项目已停止维护，中考结束后将重构 Flue-next。
 
 - 本仓库是从私有开发仓库整理出的公开版本。
 - 不保留原私有仓库 Git 历史。
-- 不包含真实签名文件、私有 Agent 配置、本地调试备份和日志。
-- 公开版中的现代分支已移除旧版 `DingDingCat / 叮叮猫` 表盘支持。
+- 不包含真实签名文件。
 
 ## 分支说明
 
 - `main`
   - 当前公开最新版。
-  - 基于私有仓库较新的 `beta1.5` 方向整理。
-  - 保留现代应用抽屉、通知中心、Smart Stack、内置图片/视频表盘和 `jb_watch` 支持。
+  - 保留 `jb_watch` 支持（残废）。
 
 - `classic/beta1.2`
   - `main` 主线旧版本的经典快照。
@@ -28,7 +26,6 @@ Flue-compose 项目已停止维护，中考结束后将重构 Flue-next。
 - `youzipi/fix-1.4`
   - 基于 `youzipi/fix-beta1.4-performance-and-shortcuts` 整理出的公开分支。
   - 偏向 `beta1.4` 时期的性能与快捷交互修复线。
-  - 同样移除了旧版 `DingDingCat / 叮叮猫` 表盘支持。
 
 ## 主要能力
 
