@@ -43,14 +43,14 @@ fun GestureHost(
 
                             when (screenState) {
                                 ScreenState.Face -> {
-                                    if (isVertical && totalDy < -80) {
-                                        onStateChange(ScreenState.Apps)
+                                    if (isVertical && totalDy < -80 && showWidgetPage) {
+                                        onStateChange(ScreenState.Widgets)
                                         change.consume()
                                     } else if (isHorizontal && totalDx > 80 && sideScreenEnabled) {
                                         onStateChange(ScreenState.Stack)
                                         change.consume()
-                                    } else if (isHorizontal && totalDx < -80 && showWidgetPage) {
-                                        onStateChange(ScreenState.Widgets)
+                                    } else if (isHorizontal && totalDx < -80) {
+                                        onStateChange(ScreenState.Apps)
                                         change.consume()
                                     } else if (isVertical && totalDy > 80 && showControlCenter) {
                                         onStateChange(ScreenState.ControlCenter)
@@ -61,7 +61,7 @@ fun GestureHost(
                                 ScreenState.Notifications -> Unit
 
                                 ScreenState.Widgets -> {
-                                    if (!widgetsBackGestureLocked && isHorizontal && totalDx > 80) {
+                                    if (!widgetsBackGestureLocked && isHorizontal && totalDx < -80) {
                                         onStateChange(ScreenState.Face)
                                         change.consume()
                                     }
@@ -78,7 +78,7 @@ fun GestureHost(
                                 ScreenState.App -> Unit
                                 ScreenState.Settings -> Unit
                                 ScreenState.Stack -> {
-                                    if (isHorizontal && totalDx < -80) {
+                                    if (isHorizontal && totalDx > 80) {
                                         onStateChange(ScreenState.Face)
                                         change.consume()
                                     }
