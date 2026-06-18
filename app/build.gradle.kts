@@ -44,11 +44,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.flue.launcher"
+        applicationId = "com.flue.launcher.mod"
         minSdk = 27
         targetSdk = 36
         versionCode = 15
-        versionName = "beta1.5"
+        versionName = "beta1.5-mod"
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
 
@@ -68,9 +68,9 @@ android {
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            val minifyRelease = !disableReleaseMinify.get()
-            isMinifyEnabled = minifyRelease
-            isShrinkResources = minifyRelease
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -1314,7 +1314,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun handleBackPress() {
         when (_screenState.value) {
-            ScreenState.Face -> Unit
+            ScreenState.Face -> _screenState.value = ScreenState.Apps
             ScreenState.Apps -> {
                 if (_openFolder.value != null) {
                     closeFolder()

@@ -69,7 +69,12 @@ fun GestureHost(
 
                                 ScreenState.ControlCenter -> Unit
 
-                                ScreenState.Apps -> Unit
+                                ScreenState.Apps -> {
+                                    if (isHorizontal && totalDx > 80) {
+                                        onStateChange(ScreenState.Face)
+                                        change.consume()
+                                    }
+                                }
                                 ScreenState.App -> Unit
                                 ScreenState.Settings -> Unit
                                 ScreenState.Stack -> {

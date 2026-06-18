@@ -42,7 +42,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +52,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -98,6 +101,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -258,17 +264,8 @@ fun ControlCenterLayer(
                     }
                     return androidx.compose.ui.geometry.Offset(0f, available.y)
                 }
-                if (available.y < 0f && atBottom) {
-                    if (bottomDismissArmed || verticalOverscroll.value <= -dismissDragThresholdPx) {
-                        onDismissToFace()
-                    } else {
-                        overscrollScope.launch {
-                            verticalOverscroll.snapTo(
-                                (verticalOverscroll.value + available.y * CONTROL_CENTER_OVERSCROLL_RESISTANCE)
-                                    .coerceAtLeast(-CONTROL_CENTER_OVERSCROLL_LIMIT)
-                            )
-                        }
-                    }
+                if (available.y < 0f) {
+                    onDismissToFace()
                     return androidx.compose.ui.geometry.Offset(0f, available.y)
                 }
                 if (verticalOverscroll.value > 0f && available.y < 0f) {
@@ -408,8 +405,6 @@ fun ControlCenterLayer(
             delay(250)
         }
     }
-    val greetingText = remember(timeText) { controlCenterGreeting() }
-
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -429,7 +424,7 @@ fun ControlCenterLayer(
         val sliderHeight = 58.dp
         val sliderHorizontalPadding = 14.dp
         val topStatusHorizontalInset = 20.dp
-        val contentHorizontalPadding = 18.dp
+        val contentHorizontalPadding = 6.dp
         val toggleRowSpacing = 14.dp
         val toggleRowRequiredWidth = toggleSize * 4f + toggleRowSpacing * 3f
         val availableToggleRowWidth = (maxWidth - leftSafeInset - contentHorizontalPadding * 2f).coerceAtLeast(0.dp)
@@ -437,9 +432,7 @@ fun ControlCenterLayer(
         val estimatedControlsHeight = toggleSize +
             controlsSpacing +
             sliderHeight +
-            controlsSpacing +
-            sliderHeight +
-            (if (showMusicControls) controlsSpacing + 156.dp else 0.dp) +
+            (if (showMusicControls) controlsSpacing + 148.dp else 0.dp) +
             (if (showNotificationCard) controlsSpacing + 108.dp else 0.dp)
         val estimatedContentHeight = verticalPadding * 2f +
             32.dp +
@@ -565,16 +558,19 @@ fun ControlCenterLayer(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(controlsSpacing)) {
-                BoxWithConstraints(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = toggleRowTopPadding)
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val toggleViewportWidth = maxWidth
-                    if (toggleRowFits) {
+                    Column(
+                        modifier = Modifier.weight(0.80f),
+                        verticalArrangement = Arrangement.spacedBy(controlsSpacing)
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             ControlToggle(
@@ -632,134 +628,105 @@ fun ControlCenterLayer(
                                 },
                                 onLongClick = { openSettings(context, Settings.ACTION_WIRELESS_SETTINGS) }
                             )
-                            ControlToggle(
-                                icon = Icons.Filled.DoNotDisturbOn,
-                                label = "勿扰",
-                                active = dndEnabled,
-                                size = toggleSize,
-                                iconSize = toggleIconSize,
-                                labelGap = toggleLabelGap,
-                                onGestureLockChange = lockControlCenterGesture,
-                                onClick = {
-                                    dndEnabled = !dndEnabled
-                                    toggleDnd(context)
-                                    dndEnabled = isDndEnabled(context)
-                                },
-                                onLongClick = { openDndSettings(context) }
-                            )
                         }
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .nestedScroll(toggleElasticScroll)
-                                .horizontalScroll(toggleScrollState)
+                        ControlSliderCard(
+                            icon = Icons.Filled.Brightness6,
+                            label = "亮度",
+                            value = brightness,
+                            height = sliderHeight,
+                            horizontalPadding = sliderHorizontalPadding,
+                            onValueChange = { value ->
+                                brightness = value
+                                setBrightness(context, value)
+                            }
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(0.20f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(28.dp))
+                            .background(launcherStyle.cardColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxHeight(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.SpaceEvenly
                         ) {
-                            Row(
+                            Icon(
+                                Icons.Filled.VolumeUp,
+                                contentDescription = "音量",
+                                tint = launcherStyle.bodyColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Box(
                                 modifier = Modifier
-                                    .widthIn(min = toggleViewportWidth)
-                                    .graphicsLayer { translationX = toggleOverscroll.value },
-                                horizontalArrangement = Arrangement.spacedBy(toggleRowSpacing),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ControlToggle(
-                                    icon = Icons.Filled.Wifi,
-                                    label = "WiFi",
-                                    active = connectivity.wifiActive,
-                                    size = toggleSize,
-                                    iconSize = toggleIconSize,
-                                    labelGap = toggleLabelGap,
-                                    onGestureLockChange = lockControlCenterGesture,
-                                    onClick = {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                            openInternetConnectivityPanel(context, internetPanelLauncher)
-                                        } else if (!toggleWifiLegacy(context)) {
-                                            openSettings(context, Settings.ACTION_WIFI_SETTINGS)
-                                        }
-                                        connectivity = readConnectivitySnapshot(context)
-                                    },
-                                    onLongClick = { openSettings(context, Settings.ACTION_WIFI_SETTINGS) }
-                                )
-                                ControlToggle(
-                                    icon = Icons.Filled.Bluetooth,
-                                    label = "蓝牙",
-                                    active = bluetoothEnabled,
-                                    size = toggleSize,
-                                    iconSize = toggleIconSize,
-                                    labelGap = toggleLabelGap,
-                                    onGestureLockChange = lockControlCenterGesture,
-                                    onClick = {
-                                        requestBluetoothToggle(
-                                            context = context,
-                                            enableLauncher = bluetoothEnableLauncher,
-                                            permissionLauncher = bluetoothPermissionLauncher,
-                                            onPermissionPending = { pendingBluetoothEnable = true }
+                                    .width(26.dp)
+                                    .weight(1f)
+                                    .padding(vertical = 6.dp)
+                                    .pointerInput(Unit) {
+                                        detectVerticalDragGestures(
+                                            onDragEnd = { },
+                                            onVerticalDrag = { change, dragAmount ->
+                                                change.consume()
+                                                val boxHeight = size.height.toFloat()
+                                                val delta = -dragAmount / boxHeight
+                                                val newValue = (mediaVolume + delta).coerceIn(0f, 1f)
+                                                mediaVolume = newValue
+                                                pendingRequestedMediaVolume = newValue
+                                                setMusicVolume(audioManager, newValue)
+                                            }
                                         )
-                                        bluetoothEnabled = isBluetoothLikelyEnabled(context)
-                                    },
-                                    onLongClick = { openSettings(context, Settings.ACTION_BLUETOOTH_SETTINGS) }
-                                )
-                                ControlToggle(
-                                    icon = Icons.Filled.NetworkCell,
-                                    label = "流量",
-                                    active = connectivity.cellularActive,
-                                    size = toggleSize,
-                                    iconSize = toggleIconSize,
-                                    labelGap = toggleLabelGap,
-                                    onGestureLockChange = lockControlCenterGesture,
-                                    onClick = {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                            openInternetConnectivityPanel(context, internetPanelLauncher)
-                                        } else {
-                                            openSettings(context, Settings.ACTION_WIRELESS_SETTINGS)
+                                    }
+                                    .pointerInput(Unit) {
+                                        detectTapGestures { offset ->
+                                            val boxHeight = size.height.toFloat()
+                                            val newValue = (1f - offset.y / boxHeight).coerceIn(0f, 1f)
+                                            mediaVolume = newValue
+                                            pendingRequestedMediaVolume = newValue
+                                            setMusicVolume(audioManager, newValue)
                                         }
-                                        connectivity = readConnectivitySnapshot(context)
-                                    },
-                                    onLongClick = { openSettings(context, Settings.ACTION_WIRELESS_SETTINGS) }
-                                )
-                                ControlToggle(
-                                    icon = Icons.Filled.DoNotDisturbOn,
-                                    label = "勿扰",
-                                    active = dndEnabled,
-                                    size = toggleSize,
-                                    iconSize = toggleIconSize,
-                                    labelGap = toggleLabelGap,
-                                    onGestureLockChange = lockControlCenterGesture,
-                                    onClick = {
-                                        dndEnabled = !dndEnabled
-                                        toggleDnd(context)
-                                        dndEnabled = isDndEnabled(context)
-                                    },
-                                    onLongClick = { openDndSettings(context) }
-                                )
+                                    }
+                            ) {
+                                val trackColor = launcherStyle.bodyColor
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val canvasW = size.width
+                                    val canvasH = size.height
+                                    val barWidth = 12.dp.toPx()
+                                    val barX = (canvasW - barWidth) / 2f
+                                    val radius = CornerRadius(6.dp.toPx())
+                                    // Background track
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = 0.22f),
+                                        topLeft = Offset(barX, 0f),
+                                        size = Size(barWidth, canvasH),
+                                        cornerRadius = radius
+                                    )
+                                    // Filled portion
+                                    val fillH = canvasH * mediaVolume
+                                    drawRoundRect(
+                                        color = Color.White,
+                                        topLeft = Offset(barX, canvasH - fillH),
+                                        size = Size(barWidth, fillH),
+                                        cornerRadius = radius
+                                    )
+                                    // Thumb capsule (pill shape like brightness slider)
+                                    val thumbY = canvasH - fillH
+                                    val thumbW = 24.dp.toPx()
+                                    val thumbH = 10.dp.toPx()
+                                    drawRoundRect(
+                                        color = Color.White,
+                                        topLeft = Offset(canvasW / 2f - thumbW / 2f, thumbY - thumbH / 2f),
+                                        size = Size(thumbW, thumbH),
+                                        cornerRadius = CornerRadius(thumbH / 2f)
+                                    )
+                                }
                             }
                         }
                     }
                 }
-
-                ControlSliderCard(
-                    icon = Icons.Filled.VolumeUp,
-                    label = "音量",
-                    value = mediaVolume,
-                    height = sliderHeight,
-                    horizontalPadding = sliderHorizontalPadding,
-                    onValueChange = { value ->
-                        mediaVolume = value
-                        pendingRequestedMediaVolume = value
-                        setMusicVolume(audioManager, value)
-                    }
-                )
-                ControlSliderCard(
-                    icon = Icons.Filled.Brightness6,
-                    label = "亮度",
-                    value = brightness,
-                    height = sliderHeight,
-                    horizontalPadding = sliderHorizontalPadding,
-                    onValueChange = { value ->
-                        brightness = value
-                        setBrightness(context, value)
-                    }
-                )
 
                 if (showMusicControls) {
                     MediaControlCard(
@@ -790,15 +757,6 @@ fun ControlCenterLayer(
             } else {
                 Spacer(Modifier.weight(1f))
             }
-            Text(
-                text = greetingText,
-                color = WatchColors.TextTertiary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(top = footerTopGap)
-            )
         }
     }
 }
@@ -1084,8 +1042,6 @@ private fun ControlToggle(
                 modifier = Modifier.size(iconSize)
             )
         }
-        Spacer(Modifier.height(labelGap))
-        Text(label, color = WatchColors.TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -1141,19 +1097,19 @@ private fun MediaControlCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(156.dp)
+            .height(148.dp)
             .clip(RoundedCornerShape(32.dp))
             .background(bg.copy(alpha = 0.88f))
             .clickable(onClick = if (notificationAccessGranted) onOpenApp else onOpenNotificationAccess)
-            .padding(12.dp)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         if (!notificationAccessGranted) {
             MediaNotificationAccessPrompt()
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val artworkGap = 12.dp
-            val preferredArtworkSize = 132.dp
-            val minArtworkSize = 96.dp
+            val artworkGap = 10.dp
+            val preferredArtworkSize = 84.dp
+            val minArtworkSize = 64.dp
             val preferredControlsWidth = 36.dp * 3f + 8.dp * 2f
             val artworkSize = if (maxWidth >= preferredArtworkSize + artworkGap + preferredControlsWidth) {
                 preferredArtworkSize
@@ -1182,7 +1138,7 @@ private fun MediaControlCard(
                             contentScale = ContentScale.Crop
                         )
                     } else {
-                        Icon(Icons.Filled.MusicNote, null, tint = Color.White, modifier = Modifier.size(34.dp))
+                        Icon(Icons.Filled.MusicNote, null, tint = Color.White, modifier = Modifier.size(22.dp))
                     }
                 }
                 Spacer(Modifier.width(artworkGap))
@@ -1257,12 +1213,12 @@ private fun MediaNotificationAccessPrompt() {
     ) {
         Box(
             modifier = Modifier
-                .size(132.dp)
+                .size(84.dp)
                 .clip(RoundedCornerShape(24.dp))
                 .background(Color.Black.copy(alpha = 0.22f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.MusicNote, null, tint = Color.White, modifier = Modifier.size(34.dp))
+            Icon(Icons.Filled.MusicNote, null, tint = Color.White, modifier = Modifier.size(22.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(
