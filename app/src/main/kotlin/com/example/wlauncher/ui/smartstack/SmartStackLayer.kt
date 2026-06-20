@@ -89,6 +89,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -913,6 +914,8 @@ fun WidgetPageLayer(
     onSwapWidget: (Int, Int) -> Unit,
     onRemoveWidget: (Int) -> Unit,
     onEditModeChange: (Boolean) -> Unit = {},
+    onDismissRequest: () -> Unit = {},
+    onScrollAtTopChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -926,6 +929,13 @@ fun WidgetPageLayer(
     val overscroll = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val widgetOverscrollLimitPx = 150f
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }.collect { atTop ->
+            onScrollAtTopChange(atTop)
+        }
+    }
     val widgetCards = remember(sideScreenWidgetSlots, widgetRepository) {
         val parsedCards = sideScreenWidgetSlots.mapIndexedNotNull { index, raw ->
             widgetRepository.parseSlotValue(raw)?.let { widget ->
@@ -1106,6 +1116,10 @@ fun WidgetPageLayer(
 
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (overscroll.value != 0f) {
+                    if (overscroll.value > 60f) {
+                        onDismissRequest()
+                        return available
+                    }
                     overscroll.stop()
                     overscroll.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 420f))
                     return available

@@ -2132,18 +2132,30 @@ private fun openInternetConnectivityPanel(
 }
 
 private fun toggleWifiLegacy(context: Context): Boolean {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return false
-    if (ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.CHANGE_WIFI_STATE
-        ) != PackageManager.PERMISSION_GRANTED
-    ) {
-        return false
+    // 方案一：尝试 WifiManager API
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        if (ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CHANGE_WIFI_STATE
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            val wifiManager = context.applicationContext.getSystemService(WifiManager::class.java)
+            if (wifiManager != null) {
+                val result = runCatching {
+                    @Suppress("DEPRECATION")
+                    wifiManager.setWifiEnabled(!isWifiEnabled(context))
+                }.getOrDefault(false)
+                if (result) return true
+            }
+        }
     }
-    val wifiManager = context.applicationContext.getSystemService(WifiManager::class.java) ?: return false
+    // 方案二：Root 方式（svc wifi）
     return runCatching {
-        @Suppress("DEPRECATION")
-        wifiManager.setWifiEnabled(!isWifiEnabled(context))
+        val enable = !isWifiEnabled(context)
+        val cmd = if (enable) "svc wifi enable" else "svc wifi disable"
+        val process = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
+        val exitCode = process.waitFor()
+        exitCode == 0
     }.getOrDefault(false)
 }
 

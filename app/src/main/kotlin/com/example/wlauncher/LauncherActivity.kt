@@ -422,6 +422,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
     var directLaunchInitialScrollResetKey by rememberSaveable { mutableStateOf(0) }
     var directLaunchInitialScrollResetPosted by rememberSaveable { mutableStateOf(false) }
     var widgetPageEditGestureLocked by rememberSaveable { mutableStateOf(false) }
+    var widgetScrollAtTop by remember { mutableStateOf(true) }
     val isDirectLaunchEnteringAppList =
         directLaunchStartupWindowOpen && directLaunchAppListConsumed && screenState == ScreenState.Apps
     val isReturningFromApp = prevState == ScreenState.App && screenState == ScreenState.Apps
@@ -742,6 +743,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
             showWidgetPage = showWidgetPage,
             showControlCenter = showControlCenter,
             widgetsBackGestureLocked = widgetPageEditGestureLocked,
+            widgetScrollAtTop = widgetScrollAtTop,
             modifier = Modifier.fillMaxSize()
         ) {
             if (directLaunchBlackBackdropVisible) {
@@ -1115,8 +1117,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         .fillMaxSize()
                         .zIndex(4.2f)
                         .graphicsLayer {
-                            translationX = (1f - widgetPageProgress) * screenWidthPx
-                            alpha = widgetPageProgress.coerceIn(0f, 1f)
+                            translationY = (1f - widgetPageProgress) * screenHeightPx
                         }
                 ) {
                     val sideScreenWidgetSlots by vm.sideScreenWidgetSlots.collectAsStateWithLifecycle()
@@ -1127,7 +1128,9 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         onSetWidget = vm::setWidgetSlot,
                         onSwapWidget = vm::swapWidgetSlots,
                         onRemoveWidget = vm::removeWidgetSlot,
-                        onEditModeChange = { widgetPageEditGestureLocked = it }
+                        onEditModeChange = { widgetPageEditGestureLocked = it },
+                        onDismissRequest = { vm.setState(ScreenState.Face) },
+                        onScrollAtTopChange = { widgetScrollAtTop = it }
                     )
                 }
             }

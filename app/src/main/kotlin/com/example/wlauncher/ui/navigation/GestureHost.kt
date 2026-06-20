@@ -17,6 +17,7 @@ fun GestureHost(
     showWidgetPage: Boolean = true,
     showControlCenter: Boolean = false,
     widgetsBackGestureLocked: Boolean = false,
+    widgetScrollAtTop: Boolean = true,
     content: @Composable () -> Unit
 ) {
     var totalDx by remember { mutableFloatStateOf(0f) }
@@ -25,7 +26,7 @@ fun GestureHost(
 
     Box(
         modifier = modifier
-            .pointerInput(screenState, sideScreenEnabled, showWidgetPage, showControlCenter, widgetsBackGestureLocked) {
+            .pointerInput(screenState, sideScreenEnabled, showWidgetPage, showControlCenter, widgetsBackGestureLocked, widgetScrollAtTop) {
                 detectDragGestures(
                     onDragStart = {
                         totalDx = 0f
@@ -61,9 +62,9 @@ fun GestureHost(
                                 ScreenState.Notifications -> Unit
 
                                 ScreenState.Widgets -> {
-                                    if (!widgetsBackGestureLocked && isHorizontal && totalDx < -80) {
-                                        onStateChange(ScreenState.Face)
+                                    if (widgetScrollAtTop && isVertical && totalDy > 50) {
                                         change.consume()
+                                        onStateChange(ScreenState.Face)
                                     }
                                 }
 
