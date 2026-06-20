@@ -127,6 +127,8 @@ dependencies {
     implementation(libs.compose.cloudy)
     implementation(libs.graphics.shapes)
 
+    implementation("io.github.proify.lyricon:subscriber:0.1.70")
+
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.compose.ui.tooling.preview)
 }

@@ -2824,8 +2824,8 @@ private fun AboutCard(
             )
             Spacer(modifier = Modifier.height(10.dp))
             ActionCard(
-                title = "Lyricon",
-                subtitle = "tomakino/lyricon",
+                title = "Lyricon 歌词",
+                subtitle = "已集成到控制中心音乐卡片，替换歌手显示为歌词",
                 onClick = {
                     context.startActivity(
                         Intent(

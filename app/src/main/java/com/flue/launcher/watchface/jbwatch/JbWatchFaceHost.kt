@@ -480,7 +480,17 @@ private fun drawJbTextLayer(
     is24Hour: Boolean
 ) {
     if (!shouldDisplayLayer(layer, nowMillis, batteryLevel)) return
-    val text = resolveJbText(layer.text, nowMillis, batteryLevel, is24Hour)
+    var text = resolveJbText(layer.text, nowMillis, batteryLevel, is24Hour)
+    // 安全保障：如果变量未被解析（含花括号），强制二次解析
+    if ('{' in text) {
+        text = text
+            .replace("{dh23z}", String.format("%02d", Calendar.getInstance().apply { timeInMillis = nowMillis }.get(Calendar.HOUR_OF_DAY)))
+            .replace("{dmz}", String.format("%02d", Calendar.getInstance().apply { timeInMillis = nowMillis }.get(Calendar.MINUTE)))
+            .replace("{dnn}", Calendar.getInstance().apply { timeInMillis = nowMillis }.get(Calendar.DAY_OF_MONTH).toString())
+            .replace("{dd}", String.format("%02d", Calendar.getInstance().apply { timeInMillis = nowMillis }.get(Calendar.DAY_OF_MONTH)))
+            .replace("{bl}", batteryLevel.toString())
+            .replace("{blp}", batteryLevel.toString())
+    }
     val fontName = layer.font.orEmpty().trim()
     val bmFont = if (fontName.startsWith("bm:")) JbBmFontCache.get(face.rootDir, fontName) else null
 

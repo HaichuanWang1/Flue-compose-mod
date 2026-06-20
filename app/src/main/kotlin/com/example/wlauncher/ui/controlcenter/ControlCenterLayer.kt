@@ -135,6 +135,7 @@ import com.flue.launcher.service.WLauncherNotificationListener
 import com.flue.launcher.ui.common.WatchBatteryPill
 import com.flue.launcher.ui.common.rememberPressedState
 import com.flue.launcher.ui.notification.NotificationGroupUi
+import com.flue.launcher.lyricon.rememberLyriconManager
 import com.flue.launcher.ui.theme.LauncherTheme
 import com.flue.launcher.ui.theme.WatchColors
 import kotlinx.coroutines.delay
@@ -1093,6 +1094,8 @@ private fun MediaControlCard(
     onOpenOutputSwitcherOrApp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val lyriconManager = rememberLyriconManager()
+    val displayArtistOrLyric = lyriconManager.currentLyric ?: mediaState.artist
     val bg = if (notificationAccessGranted) mediaState.artworkColor else Color(0xFF2F3B45)
     Box(
         modifier = modifier
@@ -1168,7 +1171,7 @@ private fun MediaControlCard(
                                     animationStyleId = musicTextSwitchAnimation
                                 )
                                 AnimatedMusicText(
-                                    text = mediaState.artist,
+                                    text = displayArtistOrLyric,
                                     color = Color.White.copy(alpha = 0.72f),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Normal,
