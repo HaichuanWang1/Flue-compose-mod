@@ -54,7 +54,14 @@ android {
 
     signingConfigs {
         create("release") {
-            if (hasReleaseSigning) {
+            val keystorePropsFile = file("keystore.properties")
+            if (keystorePropsFile.isFile) {
+                val props = java.util.Properties().apply { load(keystorePropsFile.inputStream()) }
+                storeFile = file(props.getProperty("storeFile"))
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            } else if (hasReleaseSigning) {
                 storeFile = rootProject.file(signingStoreFile!!)
                 storePassword = signingStorePassword
                 keyAlias = signingKeyAlias
@@ -65,10 +72,12 @@ android {
 
     buildTypes {
         release {
-            if (hasReleaseSigning) {
+            val keystorePropsFile = file("keystore.properties")
+            if (keystorePropsFile.isFile || hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
             }
-            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
