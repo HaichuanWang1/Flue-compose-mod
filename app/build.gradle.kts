@@ -56,11 +56,16 @@ android {
         create("release") {
             val keystorePropsFile = file("keystore.properties")
             if (keystorePropsFile.isFile) {
-                val props = java.util.Properties().apply { load(keystorePropsFile.inputStream()) }
-                storeFile = file(props.getProperty("storeFile"))
-                storePassword = props.getProperty("storePassword")
-                keyAlias = props.getProperty("keyAlias")
-                keyPassword = props.getProperty("keyPassword")
+                val props = keystorePropsFile.readLines()
+                    .filter { it.contains("=") }
+                    .associate {
+                        val (k, v) = it.split("=", limit = 2)
+                        k.trim() to v.trim()
+                    }
+                storeFile = file(props["storeFile"] ?: return@create)
+                storePassword = props["storePassword"]
+                keyAlias = props["keyAlias"]
+                keyPassword = props["keyPassword"]
             } else if (hasReleaseSigning) {
                 storeFile = rootProject.file(signingStoreFile!!)
                 storePassword = signingStorePassword
