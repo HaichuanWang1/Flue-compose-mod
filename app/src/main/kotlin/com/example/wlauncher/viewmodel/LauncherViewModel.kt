@@ -129,6 +129,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val KEY_SHOW_ONGOING_NOTIFICATIONS = booleanPreferencesKey("show_ongoing_notifications")
         val KEY_ROTARY_HAPTICS_ENABLED = booleanPreferencesKey("rotary_haptics_enabled")
         val KEY_NOTIFICATION_SETTING_MIGRATED = booleanPreferencesKey("notification_setting_migrated")
+        val KEY_GESTURE_SWAP_WIDGET_APPS = booleanPreferencesKey("gesture_swap_widget_apps")
         val KEY_SHOW_WIDGET_PAGE = booleanPreferencesKey("show_widget_page")
         val KEY_SHOW_CONTROL_CENTER = booleanPreferencesKey("show_control_center")
         val KEY_SHOW_MUSIC_CONTROLS = booleanPreferencesKey("show_music_controls")
@@ -413,6 +414,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val showOngoingNotifications: StateFlow<Boolean> = _showOngoingNotifications.asStateFlow()
     private val _rotaryHapticsEnabled = MutableStateFlow(true)
     val rotaryHapticsEnabled: StateFlow<Boolean> = _rotaryHapticsEnabled.asStateFlow()
+    private val _gestureSwapWidgetApps = MutableStateFlow(false)
+    val gestureSwapWidgetApps: StateFlow<Boolean> = _gestureSwapWidgetApps.asStateFlow()
     private val _showWidgetPage = MutableStateFlow(true)
     val showWidgetPage: StateFlow<Boolean> = _showWidgetPage.asStateFlow()
     private val _showControlCenter = MutableStateFlow(true)
@@ -929,6 +932,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val loadedRotaryHaptics = prefs[KEY_ROTARY_HAPTICS_ENABLED] ?: true
                 if (_rotaryHapticsEnabled.value != loadedRotaryHaptics) {
                     _rotaryHapticsEnabled.value = loadedRotaryHaptics
+                }
+
+                val loadedGestureSwap = prefs[KEY_GESTURE_SWAP_WIDGET_APPS] ?: false
+                if (_gestureSwapWidgetApps.value != loadedGestureSwap) {
+                    _gestureSwapWidgetApps.value = loadedGestureSwap
                 }
 
                 val loadedShowWidgetPage = prefs[KEY_SHOW_WIDGET_PAGE] ?: true
@@ -1803,6 +1811,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         persist { store.edit { it[KEY_ROTARY_HAPTICS_ENABLED] = enabled } }
     }
 
+    fun setGestureSwapWidgetApps(swap: Boolean) {
+        _gestureSwapWidgetApps.value = swap
+        persist { store.edit { it[KEY_GESTURE_SWAP_WIDGET_APPS] = swap } }
+    }
+
     fun setShowWidgetPage(show: Boolean) {
         _showWidgetPage.value = show
         if (!show && _screenState.value == ScreenState.Widgets) {
@@ -2520,6 +2533,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _showNotification.value = true
         _showOngoingNotifications.value = false
         _rotaryHapticsEnabled.value = true
+        _gestureSwapWidgetApps.value = false
         _showWidgetPage.value = true
         _showControlCenter.value = true
         _showMusicControls.value = true
@@ -2624,6 +2638,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 it[KEY_SHOW_NOTIFICATION] = true
                 it[KEY_SHOW_ONGOING_NOTIFICATIONS] = false
                 it[KEY_ROTARY_HAPTICS_ENABLED] = true
+                it[KEY_GESTURE_SWAP_WIDGET_APPS] = false
                 it[KEY_SHOW_WIDGET_PAGE] = true
                 it[KEY_SHOW_CONTROL_CENTER] = true
                 it[KEY_SHOW_MUSIC_CONTROLS] = true

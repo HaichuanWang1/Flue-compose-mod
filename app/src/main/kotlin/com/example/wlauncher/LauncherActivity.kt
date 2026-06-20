@@ -230,6 +230,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
     val showNotification by vm.showNotification.collectAsStateWithLifecycle()
     val rotaryHapticsEnabled by vm.rotaryHapticsEnabled.collectAsStateWithLifecycle()
     val showWidgetPage by vm.showWidgetPage.collectAsStateWithLifecycle()
+    val gestureSwapWidgetApps by vm.gestureSwapWidgetApps.collectAsStateWithLifecycle()
     val showControlCenter by vm.showControlCenter.collectAsStateWithLifecycle()
     val watchFaceChargingPowerText by vm.watchFaceChargingPowerText.collectAsStateWithLifecycle()
     val watchFaceStatusIndicators by vm.watchFaceStatusIndicators.collectAsStateWithLifecycle()
@@ -744,6 +745,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
             showControlCenter = showControlCenter,
             widgetsBackGestureLocked = widgetPageEditGestureLocked,
             widgetScrollAtTop = widgetScrollAtTop,
+            gestureSwapWidgetApps = gestureSwapWidgetApps,
             modifier = Modifier.fillMaxSize()
         ) {
             if (directLaunchBlackBackdropVisible) {

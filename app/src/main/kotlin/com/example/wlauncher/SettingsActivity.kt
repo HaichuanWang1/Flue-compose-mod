@@ -371,6 +371,7 @@ private fun SettingsRootScreen(
     val showOngoingNotifications by vm.showOngoingNotifications.collectAsStateWithLifecycle()
     val rotaryHapticsEnabled by vm.rotaryHapticsEnabled.collectAsStateWithLifecycle()
     val showWidgetPage by vm.showWidgetPage.collectAsStateWithLifecycle()
+    val gestureSwapWidgetApps by vm.gestureSwapWidgetApps.collectAsStateWithLifecycle()
     val showControlCenter by vm.showControlCenter.collectAsStateWithLifecycle()
     val showMusicControls by vm.showMusicControls.collectAsStateWithLifecycle()
     val showMediaCustomActions by vm.showMediaCustomActions.collectAsStateWithLifecycle()
@@ -1446,13 +1447,34 @@ private fun SettingsRootScreen(
                 SettingsSwitchRow(
                     title = if (isZh) "显示小组件页" else "Show Widget Page",
                     subtitle = if (showWidgetPage) {
-                        if (isZh) "从表盘左滑进入独立小组件页面" else "Swipe left from the watch face to open the widget page"
+                        if (isZh) {
+                            if (gestureSwapWidgetApps) "从表盘左滑进入独立小组件页面" else "从表盘上滑进入独立小组件页面"
+                        } else {
+                            if (gestureSwapWidgetApps) "Swipe left from the watch face to open the widget page" else "Swipe up from the watch face to open the widget page"
+                        }
                     } else {
-                        if (isZh) "关闭左滑小组件页面入口" else "Disable the swipe-left widget page"
+                        if (isZh) {
+                            if (gestureSwapWidgetApps) "关闭左滑小组件页面入口" else "关闭上滑小组件页面入口"
+                        } else {
+                            if (gestureSwapWidgetApps) "Disable the swipe-left widget page" else "Disable the swipe-up widget page"
+                        }
                     },
                     checked = showWidgetPage,
                     onToggle = vm::setShowWidgetPage,
                     scale = itemFisheye(listState, "widget_center_toggle", screenCenterY, screenHeightPx)
+                )
+            }
+            item("gesture_swap_widget_apps") {
+                SettingsSwitchRow(
+                    title = if (isZh) "交换上滑与左滑手势" else "Swap Up & Left Gestures",
+                    subtitle = if (gestureSwapWidgetApps) {
+                        if (isZh) "上滑→应用列表，左滑→小组件" else "Swipe up → app list, swipe left → widgets"
+                    } else {
+                        if (isZh) "上滑→小组件，左滑→应用列表" else "Swipe up → widgets, swipe left → app list"
+                    },
+                    checked = gestureSwapWidgetApps,
+                    onToggle = vm::setGestureSwapWidgetApps,
+                    scale = itemFisheye(listState, "gesture_swap_widget_apps", screenCenterY, screenHeightPx)
                 )
             }
             item("control_center_toggle") {

@@ -18,6 +18,7 @@ fun GestureHost(
     showControlCenter: Boolean = false,
     widgetsBackGestureLocked: Boolean = false,
     widgetScrollAtTop: Boolean = true,
+    gestureSwapWidgetApps: Boolean = false,
     content: @Composable () -> Unit
 ) {
     var totalDx by remember { mutableFloatStateOf(0f) }
@@ -26,7 +27,7 @@ fun GestureHost(
 
     Box(
         modifier = modifier
-            .pointerInput(screenState, sideScreenEnabled, showWidgetPage, showControlCenter, widgetsBackGestureLocked, widgetScrollAtTop) {
+            .pointerInput(screenState, sideScreenEnabled, showWidgetPage, showControlCenter, widgetsBackGestureLocked, widgetScrollAtTop, gestureSwapWidgetApps) {
                 detectDragGestures(
                     onDragStart = {
                         totalDx = 0f
@@ -44,18 +45,36 @@ fun GestureHost(
 
                             when (screenState) {
                                 ScreenState.Face -> {
-                                    if (isVertical && totalDy < -80 && showWidgetPage) {
-                                        onStateChange(ScreenState.Widgets)
-                                        change.consume()
-                                    } else if (isHorizontal && totalDx > 80 && sideScreenEnabled) {
-                                        onStateChange(ScreenState.Stack)
-                                        change.consume()
-                                    } else if (isHorizontal && totalDx < -80) {
-                                        onStateChange(ScreenState.Apps)
-                                        change.consume()
-                                    } else if (isVertical && totalDy > 80 && showControlCenter) {
-                                        onStateChange(ScreenState.ControlCenter)
-                                        change.consume()
+                                    if (gestureSwapWidgetApps) {
+                                        // 交换模式：上划→列表，左划→小组件
+                                        if (isVertical && totalDy < -80) {
+                                            onStateChange(ScreenState.Apps)
+                                            change.consume()
+                                        } else if (isHorizontal && totalDx < -80 && showWidgetPage) {
+                                            onStateChange(ScreenState.Widgets)
+                                            change.consume()
+                                        } else if (isHorizontal && totalDx > 80 && sideScreenEnabled) {
+                                            onStateChange(ScreenState.Stack)
+                                            change.consume()
+                                        } else if (isVertical && totalDy > 80 && showControlCenter) {
+                                            onStateChange(ScreenState.ControlCenter)
+                                            change.consume()
+                                        }
+                                    } else {
+                                        // 默认：上划→小组件，左划→列表
+                                        if (isVertical && totalDy < -80 && showWidgetPage) {
+                                            onStateChange(ScreenState.Widgets)
+                                            change.consume()
+                                        } else if (isHorizontal && totalDx > 80 && sideScreenEnabled) {
+                                            onStateChange(ScreenState.Stack)
+                                            change.consume()
+                                        } else if (isHorizontal && totalDx < -80) {
+                                            onStateChange(ScreenState.Apps)
+                                            change.consume()
+                                        } else if (isVertical && totalDy > 80 && showControlCenter) {
+                                            onStateChange(ScreenState.ControlCenter)
+                                            change.consume()
+                                        }
                                     }
                                 }
 
