@@ -81,9 +81,18 @@ fun GestureHost(
                                 ScreenState.Notifications -> Unit
 
                                 ScreenState.Widgets -> {
-                                    if (widgetScrollAtTop && isVertical && totalDy > 50) {
-                                        change.consume()
-                                        onStateChange(ScreenState.Face)
+                                    if (gestureSwapWidgetApps) {
+                                        // 交换模式：从右打开，右划退出
+                                        if (widgetScrollAtTop && isHorizontal && totalDx > 50) {
+                                            change.consume()
+                                            onStateChange(ScreenState.Face)
+                                        }
+                                    } else {
+                                        // 默认模式：从下滑入，下滑退出
+                                        if (widgetScrollAtTop && isVertical && totalDy > 50) {
+                                            change.consume()
+                                            onStateChange(ScreenState.Face)
+                                        }
                                     }
                                 }
 

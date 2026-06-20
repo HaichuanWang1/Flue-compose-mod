@@ -1119,7 +1119,13 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         .fillMaxSize()
                         .zIndex(4.2f)
                         .graphicsLayer {
-                            translationY = (1f - widgetPageProgress) * screenHeightPx
+                            if (gestureSwapWidgetApps) {
+                                // 左划打开：从右侧滑入
+                                translationX = (1f - widgetPageProgress) * screenWidthPx
+                            } else {
+                                // 上划打开：从底部滑入
+                                translationY = (1f - widgetPageProgress) * screenHeightPx
+                            }
                         }
                 ) {
                     val sideScreenWidgetSlots by vm.sideScreenWidgetSlots.collectAsStateWithLifecycle()

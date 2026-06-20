@@ -239,30 +239,17 @@ object JbWatchParser {
 
     private fun decodePxml(file: File): String {
         val raw = file.readText(Charsets.UTF_8).trim()
-        val encoded = raw.filter { ch ->
-            ch == '=' || ch == '\n' || ch == '\r' || ch == '\t' || ch in JB_STANDARD_BASE64
-        }
         if (raw.startsWith("<Watch")) return sanitizeJbXml(raw)
-
-        val candidates = listOf(
-            remapJbBase64(encoded, from = JB_CUSTOM_BASE64, to = JB_STANDARD_BASE64),
-            encoded
-        ).distinct().mapNotNull { candidate ->
-            runCatching {
-                sanitizeJbXml(
-                    Base64.decode(candidate, Base64.DEFAULT).toString(Charsets.UTF_8)
-                )
-            }.getOrNull()
-        }
-
-        return candidates.firstOrNull(::isWellFormedJbXml)
-            ?: candidates.firstOrNull { decoded -> decoded.startsWith("<Watch") && decoded.contains("<Layer") }
-            ?: error("watch.pxml 解码失败")
-    }
-
-    private fun remapJbBase64(raw: String, from: String, to: String): String {
-        val map = from.zip(to).toMap()
-        return raw.map { ch -> map[ch] ?: ch }.joinToString("")
+        // 参考 WFTools 实现：字符交换后直接 Base64 解码
+        var temp = raw.replace("g", "#").replace("D", "g").replace("#", "D")
+        temp = temp.replace("4", "#").replace("L", "4").replace("#", "L")
+        return runCatching {
+            sanitizeJbXml(Base64.decode(temp, Base64.DEFAULT).toString(Charsets.UTF_8))
+        }.recoverCatching {
+            // 回退：标准 Base64 直接解码
+            val std = raw.filter { ch -> ch in JB_STANDARD_BASE64 || ch == '=' }
+            sanitizeJbXml(Base64.decode(std, Base64.DEFAULT).toString(Charsets.UTF_8))
+        }.getOrElse { error("watch.pxml 解码失败") }
     }
 
     private fun sanitizeJbXml(raw: String): String {
@@ -652,6 +639,7 @@ private fun resolveJbText(raw: String, nowMillis: Long, batteryLevel: Int, is24H
         .replace("{dsz}", calendar.get(Calendar.SECOND).toString().padStart(2, '0'))
         .replace("{dd}", calendar.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0'))
         .replace("{ddm}", calendar.get(Calendar.MONTH).plus(1).toString().padStart(2, '0'))
+        .replace("{dnn}", calendar.get(Calendar.DAY_OF_MONTH).toString())
         .replace("{ddw2}", weekday)
         .replace("{ddw}", weekday)
         .replace("{ddw0}", dayOfWeekZero.toString())
@@ -793,6 +781,12 @@ private fun evaluateJbNumericExpression(raw: String, nowMillis: Long, batteryLev
         .replace("{dmz}", minute.toString())
         .replace("{dh23z}", calendar.get(Calendar.HOUR_OF_DAY).toString())
         .replace("{dh12z}", hour.toString())
+        .replace("{dnn}", calendar.get(Calendar.DAY_OF_MONTH).toString())
+        .replace("{dd}", calendar.get(Calendar.DAY_OF_MONTH).toString())
+        .replace("{dwd}", arrayOf("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")[calendar.get(Calendar.DAY_OF_WEEK) - 1])
+        .replace("{drh}", (hour * 30f).toString())
+        .replace("{drm}", (minute * 6f).toString())
+        .replace("{drss}", (second * 6f).toString())
         .replace(" ", "")
     return evaluateJbArithmetic(value)
 }
