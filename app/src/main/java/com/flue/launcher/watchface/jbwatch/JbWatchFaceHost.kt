@@ -465,7 +465,7 @@ private fun drawJbBitmapLayer(
         drawConditionBitmap(canvas, bitmap, rect, layer.condGrid, index, paint)
     } else {
         canvas.save()
-        rotateJbLayer(canvas, rect, layer.rotation)
+        rotateJbLayerEval(canvas, rect, layer.rotation, nowMillis, batteryLevel)
         canvas.drawBitmap(bitmap, null, rect, paint)
         canvas.restore()
     }
@@ -481,6 +481,9 @@ private fun drawJbTextLayer(
 ) {
     if (!shouldDisplayLayer(layer, nowMillis, batteryLevel)) return
     val text = resolveJbText(layer.text, nowMillis, batteryLevel, is24Hour)
+    val fontName = layer.font.orEmpty().trim()
+    val bmFont = if (fontName.startsWith("bm:")) JbBmFontCache.get(face.rootDir, fontName) else null
+
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = parseJbColor(layer.color)
         textSize = layer.textSize
@@ -492,7 +495,13 @@ private fun drawJbTextLayer(
         alpha = resolveJbLayerOpacity(layer)
         typeface = JbWatchTypefaceCache.get(face.rootDir, layer.font)
     }
-    val textDisplaySize = resolveJbTextDisplaySize(layer, text, paint)
+    val textDisplaySize = if (bmFont != null) {
+        val mw = JbBmFontCache.measureWidth(bmFont, text)
+        val mh = bmFont.lineHeight.toFloat().coerceAtLeast(1f)
+        applyJbLayerScale(layer, mw, mh)
+    } else {
+        resolveJbTextDisplaySize(layer, text, paint)
+    }
     val rect = resolveJbRect(
         face = face,
         layer = layer,
@@ -504,7 +513,9 @@ private fun drawJbTextLayer(
         1f -> rect.right
         else -> rect.centerX()
     }
-    val y = rect.centerY() - (paint.descent() + paint.ascent()) / 2f
+    val yBase = rect.centerY() + (bmFont?.base ?: 0) - (bmFont?.lineHeight ?: 0) / 2f
+    val y = if (bmFont != null) yBase else rect.centerY() - (paint.descent() + paint.ascent()) / 2f
+
     if (layer.outline?.equals("Outline", ignoreCase = true) == true && layer.oSize > 0) {
         val outlinePaint = Paint(paint).apply {
             style = Paint.Style.STROKE
@@ -513,13 +524,15 @@ private fun drawJbTextLayer(
             alpha = ((layer.oOpacity.coerceIn(0, 100) / 100f) * 255).toInt()
         }
         canvas.save()
-        rotateJbLayer(canvas, rect, layer.rotation)
-        canvas.drawText(text, x, y, outlinePaint)
+        rotateJbLayerEval(canvas, rect, layer.rotation, nowMillis, batteryLevel)
+        if (bmFont != null) drawJbBitmapText(canvas, text, x, y, bmFont, paint.textAlign, outlinePaint)
+        else canvas.drawText(text, x, y, outlinePaint)
         canvas.restore()
     }
     canvas.save()
-    rotateJbLayer(canvas, rect, layer.rotation)
-    canvas.drawText(text, x, y, paint)
+    rotateJbLayerEval(canvas, rect, layer.rotation, nowMillis, batteryLevel)
+    if (bmFont != null) drawJbBitmapText(canvas, text, x, y, bmFont, paint.textAlign, paint)
+    else canvas.drawText(text, x, y, paint)
     canvas.restore()
 }
 
@@ -735,6 +748,11 @@ private fun resolveJbBitmapDisplaySize(layer: JbWatchLayer, bitmapWidth: Int, bi
     val grid = if (layer.type == "image_cond") resolveJbGrid(layer.condGrid) else 1 to 1
     val sourceWidth = (bitmapWidth / grid.first.toFloat()).coerceAtLeast(1f)
     val sourceHeight = (bitmapHeight / grid.second.toFloat()).coerceAtLeast(1f)
+    // 普通图片优先使用实际像素尺寸，避免 pxmldecl 与真实图片严重不符时拉伸变形
+    // image_cond（雪碧图）和 image_gif 仍使用声明尺寸
+    if (layer.type != "image_cond" && layer.type != "image_gif") {
+        return applyJbLayerScale(layer, sourceWidth, sourceHeight)
+    }
     val aspect = sourceWidth / sourceHeight.coerceAtLeast(1f)
     val baseWidth = when {
         layer.width > 0 -> layer.width.toFloat()
@@ -756,7 +774,12 @@ private fun applyJbLayerScale(layer: JbWatchLayer, width: Float, height: Float):
 }
 
 private fun rotateJbLayer(canvas: AndroidCanvas, rect: RectF, rotationRaw: String) {
-    val rotation = rotationRaw.toFloatOrNull() ?: 0f
+    val rotation = rotationRaw.toFloatOrNull() ?: return
+    canvas.rotate(rotation, rect.centerX(), rect.centerY())
+}
+
+private fun rotateJbLayerEval(canvas: AndroidCanvas, rect: RectF, rotationRaw: String, nowMillis: Long, batteryLevel: Int) {
+    val rotation = evaluateJbNumericExpression(rotationRaw, nowMillis, batteryLevel)
     if (rotation == 0f) return
     canvas.rotate(rotation, rect.centerX(), rect.centerY())
 }
@@ -1158,5 +1181,114 @@ private object JbWatchTypefaceCache {
             cache[key] = typeface
             return typeface
         }
+    }
+}
+
+// ========== 位图字体 (BMFont) 支持 ==========
+
+private data class JbGlyph(
+    val id: Int, val x: Int, val y: Int,
+    val width: Int, val height: Int,
+    val xoffset: Int, val yoffset: Int, val xadvance: Int
+)
+
+private data class JbBitmapFont(
+    val lineHeight: Int, val base: Int,
+    val bitmap: Bitmap, val glyphs: Map<Int, JbGlyph>
+)
+
+private object JbBmFontCache {
+    private val cache = mutableMapOf<String, JbBitmapFont?>()
+
+    fun get(rootDir: File, fontName: String): JbBitmapFont? {
+        val key = fontName.trim()
+        if (!key.startsWith("bm:")) return null
+        return cache.getOrPut(key) { load(rootDir, key.removePrefix("bm:")) }
+    }
+
+    private fun load(rootDir: File, name: String): JbBitmapFont? {
+        val fntFile = listOf(
+            File(rootDir, "fonts_bm/$name.fnt"),
+            File(rootDir, "fonts/$name.fnt")
+        ).firstOrNull { it.isFile } ?: return null
+
+        val dir = fntFile.parentFile ?: rootDir
+        val lines = runCatching { fntFile.readLines() }.getOrNull() ?: return null
+
+        var lineHeight = 0; var base = 0; var scaleW = 0; var scaleH = 0
+        var pageFile: String? = null
+        val glyphs = mutableMapOf<Int, JbGlyph>()
+
+        for (line in lines) {
+            val t = line.trim()
+            when {
+                t.startsWith("common ") -> {
+                    lineHeight = extractInt(t, "lineHeight=") ?: lineHeight
+                    base = extractInt(t, "base=") ?: base
+                    scaleW = extractInt(t, "scaleW=") ?: scaleW
+                    scaleH = extractInt(t, "scaleH=") ?: scaleH
+                }
+                t.startsWith("page ") -> {
+                    val s = t.indexOf("file=\"")
+                    if (s >= 0) {
+                        val start = s + 6
+                        val end = t.indexOf('"', start)
+                        if (end >= 0) pageFile = t.substring(start, end)
+                    }
+                }
+                t.startsWith("char ") -> {
+                    val id = extractInt(t, "id=") ?: continue
+                    glyphs[id] = JbGlyph(
+                        id = id,
+                        x = extractInt(t, "x=") ?: 0,
+                        y = extractInt(t, "y=") ?: 0,
+                        width = extractInt(t, "width=") ?: 0,
+                        height = extractInt(t, "height=") ?: 0,
+                        xoffset = extractInt(t, "xoffset=") ?: 0,
+                        yoffset = extractInt(t, "yoffset=") ?: 0,
+                        xadvance = extractInt(t, "xadvance=") ?: 0
+                    )
+                }
+            }
+        }
+        if (glyphs.isEmpty()) return null
+
+        val pngFile = pageFile?.let { p ->
+            listOf(File(dir, p), File(rootDir, "fonts_bm/$p"), File(rootDir, "fonts/$p"))
+                .firstOrNull { it.isFile }
+        } ?: return null
+
+        val bitmap = JbWatchBitmapCache.get(pngFile) ?: return null
+        return JbBitmapFont(lineHeight, base, bitmap, glyphs)
+    }
+
+    private fun extractInt(line: String, key: String): Int? {
+        val s = line.indexOf(key) + key.length
+        if (s < key.length) return null
+        var e = s; while (e < line.length && (line[e].isDigit() || line[e] == '-')) e++
+        return line.substring(s, e).toIntOrNull()
+    }
+
+    fun measureWidth(font: JbBitmapFont, text: String): Float {
+        var w = 0f
+        for (ch in text) w += font.glyphs[ch.code]?.xadvance?.toFloat() ?: 0f
+        return w.coerceAtLeast(1f)
+    }
+}
+
+private fun drawJbBitmapText(canvas: AndroidCanvas, text: String, cx: Float, cy: Float, font: JbBitmapFont, align: Paint.Align, paint: Paint) {
+    val totalW = JbBmFontCache.measureWidth(font, text)
+    val startX = when (align) {
+        Paint.Align.CENTER -> cx - totalW / 2f
+        Paint.Align.RIGHT -> cx - totalW
+        else -> cx
+    }
+    var cursorX = startX
+    for (ch in text) {
+        val g = font.glyphs[ch.code] ?: continue
+        val src = Rect(g.x, g.y, g.x + g.width, g.y + g.height)
+        val dst = RectF(cursorX + g.xoffset, cy - font.base + g.yoffset, cursorX + g.xoffset + g.width, cy - font.base + g.yoffset + g.height)
+        canvas.drawBitmap(font.bitmap, src, dst, paint)
+        cursorX += g.xadvance
     }
 }
