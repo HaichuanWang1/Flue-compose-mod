@@ -748,11 +748,6 @@ private fun resolveJbBitmapDisplaySize(layer: JbWatchLayer, bitmapWidth: Int, bi
     val grid = if (layer.type == "image_cond") resolveJbGrid(layer.condGrid) else 1 to 1
     val sourceWidth = (bitmapWidth / grid.first.toFloat()).coerceAtLeast(1f)
     val sourceHeight = (bitmapHeight / grid.second.toFloat()).coerceAtLeast(1f)
-    // 普通图片优先使用实际像素尺寸，避免 pxmldecl 与真实图片严重不符时拉伸变形
-    // image_cond（雪碧图）和 image_gif 仍使用声明尺寸
-    if (layer.type != "image_cond" && layer.type != "image_gif") {
-        return applyJbLayerScale(layer, sourceWidth, sourceHeight)
-    }
     val aspect = sourceWidth / sourceHeight.coerceAtLeast(1f)
     val baseWidth = when {
         layer.width > 0 -> layer.width.toFloat()
