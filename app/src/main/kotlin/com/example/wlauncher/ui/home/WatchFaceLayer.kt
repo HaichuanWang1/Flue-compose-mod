@@ -365,6 +365,7 @@ private fun BuiltInWatchFaceSurface(
             if (onLongPress != null || onDoubleTap != null) {
                 Modifier.pointerInput(onLongPress, onDoubleTap) {
                     detectTapGestures(
+                        onTap = {},
                         onLongPress = onLongPress?.let { handler -> { _ -> handler() } },
                         onDoubleTap = onDoubleTap?.let { handler -> { _ -> handler() } }
                     )
