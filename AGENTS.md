@@ -17,6 +17,10 @@ JDK 17 locally / JDK 21 in CI. Kotlin 2.3.21, AGP 9.2.1, Compose BOM 2026.04.01.
 
 `settings.gradle.kts` uses Aliyun mirrors for Gradle plugins, Google, and general dependencies. Add Aliyun mirror if adding new dependency repositories. The wrapper distribution points to `https://mirrors.cloud.tencent.com/gradle/gradle-9.4.1-all.zip`.
 
+## Git
+
+Never push unless explicitly told to.
+
 ## Signing
 
 Release needs `keystore.properties` (in `app/`) or env vars `FLUE_SIGNING_*`. The repo has a debug keystore (`app/keystore.jks`, pwd `flue123456`) for local debug builds.
