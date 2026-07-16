@@ -138,8 +138,10 @@ import com.flue.launcher.ui.notification.NotificationGroupUi
 import com.flue.launcher.lyricon.rememberLyriconManager
 import com.flue.launcher.ui.theme.LauncherTheme
 import com.flue.launcher.ui.theme.WatchColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -585,10 +587,16 @@ fun ControlCenterLayer(
                                 onClick = {
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                         openInternetConnectivityPanel(context, internetPanelLauncher)
-                                    } else if (!toggleWifiLegacy(context)) {
-                                        openSettings(context, Settings.ACTION_WIFI_SETTINGS)
+                                        connectivity = readConnectivitySnapshot(context)
+                                    } else {
+                                        overscrollScope.launch {
+                                            val ok = toggleWifiLegacy(context)
+                                            connectivity = readConnectivitySnapshot(context)
+                                            if (!ok) {
+                                                openSettings(context, Settings.ACTION_WIFI_SETTINGS)
+                                            }
+                                        }
                                     }
-                                    connectivity = readConnectivitySnapshot(context)
                                 },
                                 onLongClick = { openSettings(context, Settings.ACTION_WIFI_SETTINGS) }
                             )
@@ -2134,7 +2142,7 @@ private fun openInternetConnectivityPanel(
     openSettings(context, Settings.ACTION_WIRELESS_SETTINGS)
 }
 
-private fun toggleWifiLegacy(context: Context): Boolean {
+private suspend fun toggleWifiLegacy(context: Context): Boolean {
     // 方案一：尝试 WifiManager API
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
         if (ContextCompat.checkSelfPermission(
@@ -2153,13 +2161,15 @@ private fun toggleWifiLegacy(context: Context): Boolean {
         }
     }
     // 方案二：Root 方式（svc wifi）
-    return runCatching {
-        val enable = !isWifiEnabled(context)
-        val cmd = if (enable) "svc wifi enable" else "svc wifi disable"
-        val process = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
-        val exitCode = process.waitFor()
-        exitCode == 0
-    }.getOrDefault(false)
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val enable = !isWifiEnabled(context)
+            val cmd = if (enable) "svc wifi enable" else "svc wifi disable"
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
+            val exitCode = process.waitFor()
+            exitCode == 0
+        }.getOrDefault(false)
+    }
 }
 
 private fun isWifiEnabled(context: Context): Boolean {
