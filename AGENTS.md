@@ -6,6 +6,8 @@ Android Wear launcher (Jetpack Compose), single module `:app`. Package: `com.flu
 
 ## Build (Gradle 9.4.1 wrapper)
 
+Always use `.\gradlew.bat assembleRelease` (R8 + minification) unless specifically asked for debug.
+
 ```powershell
 .\gradlew.bat assembleRelease --no-daemon --console=plain
 .\gradlew.bat installDebug
