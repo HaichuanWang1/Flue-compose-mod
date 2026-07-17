@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,6 +54,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -186,6 +188,21 @@ private fun Intent.isLauncherHomeIntent(): Boolean {
 }
 
 @Composable
+private fun AppListLoadingOverlay(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.fillMaxSize().background(Color(0xFF141416)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "加载中...",
+            color = Color(0xFFA0A0A0),
+            fontSize = 14.sp
+                    )
+                }
+                }
+            }
+
+@Composable
 fun LauncherScreen(vm: LauncherViewModel) {
     val context = LocalContext.current
     val screenState by vm.screenState.collectAsStateWithLifecycle()
@@ -197,6 +214,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
     val blurEnabled by vm.blurEnabled.collectAsStateWithLifecycle()
     val edgeBlurEnabled by vm.edgeBlurEnabled.collectAsStateWithLifecycle()
     val apps by vm.apps.collectAsStateWithLifecycle()
+    val initialLoadComplete by vm.initialLoadComplete.collectAsStateWithLifecycle()
     val allApps by vm.allApps.collectAsStateWithLifecycle()
     val allSelectableApps by vm.allSelectableApps.collectAsStateWithLifecycle()
     val openFolder by vm.openFolder.collectAsStateWithLifecycle()
@@ -908,6 +926,9 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         translationSpec = appListMotionSpec
                     )
             ) {
+                if (!initialLoadComplete && apps.isEmpty()) {
+                    AppListLoadingOverlay()
+                } else {
                 when (layoutMode) {
                     LayoutMode.Honeycomb -> HoneycombScreen(
                         apps = apps,

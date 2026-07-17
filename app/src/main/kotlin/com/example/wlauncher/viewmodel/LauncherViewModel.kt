@@ -237,6 +237,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val allApps: StateFlow<List<AppInfo>> = appRepository.allApps
     val allSelectableApps: StateFlow<List<AppInfo>> = appRepository.allSelectableApps
     val apps: StateFlow<List<AppInfo>> = appRepository.apps
+    val initialLoadComplete: StateFlow<Boolean> = appRepository.initialLoadComplete
     private val _openFolder = MutableStateFlow<AppInfo?>(null)
     val openFolder: StateFlow<AppInfo?> = _openFolder.asStateFlow()
     private val _openFolderItems = MutableStateFlow<List<AppInfo>>(emptyList())
