@@ -215,6 +215,7 @@ fun HoneycombScreen(
     var initialScrollPositionResolved by remember { mutableStateOf(false) }
     var directScrollOffset by remember { mutableFloatStateOf(Float.NaN) }
     var dragScrollActive by remember { mutableStateOf(false) }
+    var latchScrollHappened by remember { mutableStateOf(false) }
     var returnTriggered by remember { mutableStateOf(false) }
     var fastScrollActive by remember { mutableStateOf(false) }
     var fastScrollResetJob by remember { mutableStateOf<Job?>(null) }
@@ -456,6 +457,7 @@ fun HoneycombScreen(
                     try {
                         awaitEachGesture {
                             val down = awaitPrimaryDown()
+                            latchScrollHappened = false
                             val startIndex = findNearestHoneycombIndex(
                                 pointer = down.position,
                                 positions = positions,
@@ -474,7 +476,7 @@ fun HoneycombScreen(
                                 glidePressedKey = null
                                 return@awaitEachGesture
                             }
-                            if (dragScrollActive) {
+                            if (latchScrollHappened) {
                                 return@awaitEachGesture
                             }
 
@@ -665,6 +667,7 @@ fun HoneycombScreen(
                             onDragStart = { startOffset ->
                                 if (dragFromIndex != null || longPressedApp != null) return@detectDragGestures
                                 dragScrollActive = true
+                                latchScrollHappened = true
                                 wheelMomentumJob?.cancel()
                                 scope.launch { scrollOffset.stop() }
                                 directScrollOffset = currentScrollOffsetValue()
