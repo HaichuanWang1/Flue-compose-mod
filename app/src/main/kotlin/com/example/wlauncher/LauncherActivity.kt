@@ -831,7 +831,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                             bottomFadeHeightDp = honeycombBottomFade,
                             bottomFadeBlurRadiusDp = if (blurEnabled && edgeBlurEnabled) honeycombEdgeBlurRadius else 0f,
                             hasNotifications = showNotification && notificationGroups.isNotEmpty(),
-                            onLongPress = if (launcherInteractive && screenState == ScreenState.Face && !sideSceneOverlayActive) openWatchFaceChooser else null,
+                            onLongPress = null, // TODO: 暂时禁用——滚动时通过 requireUnconsumed 误触发表盘选择
                             onDoubleTap = if (
                                 doubleTapLockScreenEnabled &&
                                 launcherInteractive &&
@@ -845,7 +845,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                                 descriptor = selectedWatchFace,
                                 isFaceVisible = launcherInteractive && screenState == ScreenState.Face,
                                 refreshToken = watchFaceRefreshToken,
-                                onLongPress = if (launcherInteractive && screenState == ScreenState.Face && !sideSceneOverlayActive) openWatchFaceChooser else null,
+                                onLongPress = null, // TODO: 暂时禁用——滚动时通过 requireUnconsumed 误触发表盘选择
                                 onDoubleTap = if (
                                     doubleTapLockScreenEnabled &&
                                     launcherInteractive &&
@@ -878,7 +878,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                                 descriptor = selectedWatchFace,
                                 isFaceVisible = launcherInteractive && screenState == ScreenState.Face,
                                 refreshToken = watchFaceRefreshToken,
-                                onLongPress = if (launcherInteractive && screenState == ScreenState.Face && !sideSceneOverlayActive) openWatchFaceChooser else null,
+                                onLongPress = null, // TODO: 暂时禁用——滚动时通过 requireUnconsumed 误触发表盘选择
                                 onDoubleTap = if (
                                     doubleTapLockScreenEnabled &&
                                     launcherInteractive &&
