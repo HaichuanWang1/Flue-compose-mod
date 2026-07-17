@@ -48,22 +48,16 @@ fun AppBubble(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val activePressed = isPressed || forcePressed
-    val pressedScale by animateFloatAsState(
-        targetValue = if (activePressed) pressScaleTarget else 1f,
+    val pressProgress by animateFloatAsState(
+        targetValue = if (activePressed) 1f else 0f,
         animationSpec = tween(
             durationMillis = pressAnimationDurationMillis,
             delayMillis = if (activePressed) pressAnimationDelayMillis else 0
         ),
-        label = "bubble_scale"
+        label = "bubble_press"
     )
-    val pressedOverlayAlpha by animateFloatAsState(
-        targetValue = if (activePressed) 0.16f else 0f,
-        animationSpec = tween(
-            durationMillis = pressAnimationDurationMillis,
-            delayMillis = if (activePressed) pressAnimationDelayMillis else 0
-        ),
-        label = "bubble_overlay"
-    )
+    val pressedScale = 1f - (1f - pressScaleTarget) * pressProgress
+    val pressedOverlayAlpha = 0.16f * pressProgress
 
     LaunchedEffect(activePressed) {
         onPressedChange(activePressed)
