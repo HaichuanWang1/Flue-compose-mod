@@ -118,7 +118,7 @@ fun AppBubble(
                 Image(
                     bitmap = icon,
                     contentDescription = null,
-                    filterQuality = FilterQuality.Medium,
+                    filterQuality = FilterQuality.Low,
                     modifier = Modifier.size(size),
                     contentScale = ContentScale.Crop
                 )

@@ -240,8 +240,8 @@ fun HoneycombScreen(
         val maxCols = narrowCols + 1
         val availableWidth = contentWidthPx - with(density) { 20.dp.toPx() }
         val baseIconSizePx = (availableWidth / (maxCols + 0.35f)).coerceIn(
-            with(density) { 54.dp.toPx() },
-            with(density) { 84.dp.toPx() }
+            with(density) { if (isLowEndDevice) 36.dp.toPx() else 54.dp.toPx() },
+            with(density) { if (isLowEndDevice) 58.dp.toPx() else 84.dp.toPx() }
         )
         val iconSizePx = (baseIconSizePx * appListScale).coerceIn(
             with(density) { 28.dp.toPx() },
