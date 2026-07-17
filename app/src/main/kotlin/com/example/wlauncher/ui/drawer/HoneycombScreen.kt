@@ -1,6 +1,7 @@
 package com.flue.launcher.ui.drawer
 
 import android.os.Build
+import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
@@ -36,7 +37,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -216,7 +216,7 @@ fun HoneycombScreen(
     var initialScrollPositionResolved by remember { mutableStateOf(false) }
     var directScrollOffset by remember { mutableFloatStateOf(Float.NaN) }
     var dragScrollActive by remember { mutableStateOf(false) }
-    var scrollGeneration by remember { mutableIntStateOf(0) }
+    val scrollCancelled = remember { AtomicBoolean(false) }
     var returnTriggered by remember { mutableStateOf(false) }
     var fastScrollActive by remember { mutableStateOf(false) }
     var fastScrollResetJob by remember { mutableStateOf<Job?>(null) }
@@ -450,7 +450,7 @@ fun HoneycombScreen(
                     }
                 }
                 .platformBlur(16f, overlayBlurActive)
-                .pointerInput(apps, positions, scrollGeneration) {
+                .pointerInput(apps, positions) {
                     val menuDragStartPx = with(density) { HONEYCOMB_MENU_DRAG_START_DP.dp.toPx() }
                     val folderHoverMaxSpeedPxPerMs = with(density) {
                         HONEYCOMB_FOLDER_HOVER_MAX_SPEED_DP_PER_MS.dp.toPx()
@@ -473,6 +473,10 @@ fun HoneycombScreen(
                                 moveTolerancePx = menuDragStartPx
                             )
                             if (longPress == null) {
+                                glidePressedKey = null
+                                return@awaitEachGesture
+                            }
+                            if (scrollCancelled.getAndSet(false)) {
                                 glidePressedKey = null
                                 return@awaitEachGesture
                             }
@@ -663,7 +667,7 @@ fun HoneycombScreen(
                         detectDragGestures(
                             onDragStart = { startOffset ->
                                 if (dragFromIndex != null || longPressedApp != null) return@detectDragGestures
-                                scrollGeneration++
+                                scrollCancelled.set(true)
                                 dragScrollActive = true
                                 wheelMomentumJob?.cancel()
                                 scope.launch { scrollOffset.stop() }
@@ -676,7 +680,10 @@ fun HoneycombScreen(
                                     screenCenterY = screenCenterY + currentScrollOffsetValue(),
                                     maxDistance = iconSizePx * 0.9f
                                 )
-                                glidePressedKey = hoverIndex?.let { apps.getOrNull(it)?.componentKey }
+                                val hoverKey = hoverIndex?.let { apps.getOrNull(it)?.componentKey }
+                                if (hoverKey != glidePressedKey) {
+                                    glidePressedKey = hoverKey
+                                }
                             },
                             onDrag = { change, dragAmount ->
                                 if (dragFromIndex != null || longPressedApp != null) return@detectDragGestures
@@ -693,7 +700,10 @@ fun HoneycombScreen(
                                     screenCenterY = screenCenterY + currentScrollOffsetValue(),
                                     maxDistance = iconSizePx * 0.9f
                                 )
-                                glidePressedKey = hoverIndex?.let { apps.getOrNull(it)?.componentKey }
+                                val hoverKey = hoverIndex?.let { apps.getOrNull(it)?.componentKey }
+                                if (hoverKey != glidePressedKey) {
+                                    glidePressedKey = hoverKey
+                                }
                                 val current = currentScrollOffsetValue()
                                 val next = current + dragAmount.y
                                 val overscroll = when {
