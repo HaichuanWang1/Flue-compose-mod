@@ -10,6 +10,10 @@ Flue-compose 增强修改版。在原版基础上新增以下功能：
 - **控制中心布局优化** — 电量图标内嵌表盘设置入口
 - **性能优化** — 图标缓存提升、低端设备自动降级、减少动画与重绘
 
+## JB 表盘修复
+
+JB 表盘渲染正在修复中，参考项目为 [watchmaker-definition](https://github.com/avnpadman/watchmaker-definition)（WatchMaker 格式定义、Lua 渲染器源码、JS Studio 导入逻辑）。当前工作基于该仓库的 `WM_FORMAT_1.0.md`、`WM_FORMAT_2.0.md`、`watchface_format_old.md` 文档以及 `bfed30b9ffa04573.js`（JS 解码器）和 `WatchSkinUtils.lua`（Lua 解码器）进行实现。
+
 ---
 
 ## 原版说明
