@@ -223,16 +223,6 @@ fun HoneycombScreen(
         val screenWidthPx = with(density) { maxWidth.toPx() }
         val screenHeightPx = with(density) { maxHeight.toPx() }
         val leftSafeInsetPx = screenWidthPx * (leftSafeInsetPercent.coerceIn(0, 50) / 100f)
-        val iconShadowElevationPx by animateFloatAsState(
-            targetValue = if (iconShadowEnabled) with(density) { 8.dp.toPx() } else 0f,
-            animationSpec = tween(durationMillis = if (iconShadowEnabled) 120 else 0),
-            label = "honeycomb_icon_shadow"
-        )
-        val overlayShadowElevationPx by animateFloatAsState(
-            targetValue = if (iconShadowEnabled) with(density) { 12.dp.toPx() } else 0f,
-            animationSpec = tween(durationMillis = if (iconShadowEnabled) 120 else 0),
-            label = "honeycomb_overlay_shadow"
-        )
         val contentWidthPx = (screenWidthPx - leftSafeInsetPx).coerceAtLeast(screenWidthPx * 0.55f)
         val screenCenterX = leftSafeInsetPx + contentWidthPx / 2f
         val screenCenterY = screenHeightPx / 2f
@@ -952,10 +942,7 @@ fun HoneycombScreen(
                     AppBubble(
                         icon = app.iconForDisplay(
                             useTwoTone = twoToneIconsEnabled,
-                            blurred = blurEnabled &&
-                                effectiveEdgeBlur &&
-                                effectiveItemBlur > 0.5f &&
-                                Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                            blurred = false
                         ),
                         size = iconSizeDp,
                         tintColor = Color.Transparent,
@@ -1043,16 +1030,12 @@ fun HoneycombScreen(
                                     else -> if (fisheyeEnabled) scale.coerceIn(0.24f, 1f) else 1f
                                 }
                                 alpha = itemAlpha * entryVisuals.iconProgress
-                                shadowElevation = if (itemAlpha > 0.001f) iconShadowElevationPx else 0f
                                 shape = CircleShape
                             }
                             .onGloballyPositioned { coords ->
                                 appLaunchCenters[appKey] = coords.boundsInRoot().center
                             }
-                            .platformBlur(
-                                effectiveItemBlur,
-                                blurEnabled && effectiveEdgeBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                            )
+
                     )
                 }
             }
@@ -1078,7 +1061,7 @@ fun HoneycombScreen(
                 AppBubble(
                     icon = dragOverlayApp.iconForDisplay(
                         useTwoTone = twoToneIconsEnabled,
-                        blurred = blurEnabled && effectiveEdgeBlur && dragOverlayBlur > 0.5f && Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                        blurred = false
                     ),
                     size = iconSizeDp,
                     tintColor = Color.Transparent,
@@ -1090,23 +1073,13 @@ fun HoneycombScreen(
                     pressAnimationDelayMillis = 0,
                     pressAnimationDurationMillis = HONEYCOMB_PRESS_DURATION_MS,
                     onPressedChange = {},
-                    modifier = (if (
-                        blurEnabled &&
-                        effectiveEdgeBlur &&
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                        dragOverlayBlur > 0.5f
-                    ) {
-                        Modifier.platformBlur(dragOverlayBlur, true)
-                    } else {
-                        Modifier
-                    }).zIndex(13f)
+                    modifier = Modifier.zIndex(13f)
                         .graphicsLayer {
                             translationX = dragOverlayPointer.x - iconSizePx / 2f
                             translationY = dragOverlayPointer.y - iconSizePx / 2f
                             scaleX = dragScale
                             scaleY = dragScale
                             alpha = if (fisheyeEnabled) dragScale.coerceIn(0.24f, 1f) else 1f
-                            shadowElevation = overlayShadowElevationPx
                             shape = CircleShape
                         }
                 )
@@ -1137,16 +1110,7 @@ fun HoneycombScreen(
                 pressAnimationDelayMillis = 0,
                 pressAnimationDurationMillis = HONEYCOMB_PRESS_DURATION_MS,
                 onPressedChange = {},
-                modifier = (if (
-                    blurEnabled &&
-                    effectiveEdgeBlur &&
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                    settlingBlur > 0.5f
-                ) {
-                    Modifier.platformBlur(settlingBlur, true)
-                } else {
-                    Modifier
-                }).zIndex(14f)
+                modifier = Modifier.zIndex(14f)
                     .graphicsLayer {
                         translationX = settlingX.value - iconSizePx / 2f
                         translationY = settlingY.value - iconSizePx / 2f
@@ -1161,7 +1125,6 @@ fun HoneycombScreen(
                         scaleX = scale
                         scaleY = scale
                         alpha = if (fisheyeEnabled) scale.coerceIn(0.24f, 1f) else 1f
-                        shadowElevation = overlayShadowElevationPx
                         shape = CircleShape
                     }
             )
