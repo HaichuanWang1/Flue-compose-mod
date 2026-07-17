@@ -21,7 +21,9 @@ import android.view.TextureView
 import android.widget.TextView
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -100,6 +102,7 @@ import androidx.graphics.shapes.toPath
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.cos
@@ -364,11 +367,30 @@ private fun BuiltInWatchFaceSurface(
         .then(
             if (onLongPress != null || onDoubleTap != null) {
                 Modifier.pointerInput(onLongPress, onDoubleTap) {
-                    detectTapGestures(
-                        onTap = {},
-                        onLongPress = onLongPress?.let { handler -> { _ -> handler() } },
-                        onDoubleTap = onDoubleTap?.let { handler -> { _ -> handler() } }
-                    )
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val up = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                            waitForUpOrCancellation()
+                        }
+                        if (up != null) {
+                            if (onDoubleTap != null) {
+                                val secondDown = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                }
+                                if (secondDown != null) {
+                                    val secondUp = withTimeoutOrNull(500L) {
+                                        waitForUpOrCancellation()
+                                    }
+                                    if (secondUp != null) {
+                                        onDoubleTap()
+                                    }
+                                }
+                            }
+                        } else {
+                            onLongPress?.invoke()
+                            waitForUpOrCancellation()
+                        }
+                    }
                 }
             } else {
                 Modifier

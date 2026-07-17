@@ -3,3 +3,5 @@
 -keep class com.flue.launcher.data.model.** { *; }
 -keep class com.flue.launcher.ui.theme.** { *; }
 -keep class * extends androidx.compose.runtime.Composable { *; }
+-keep class io.github.proify.lyricon.** { *; }
+-keepclassmembers class io.github.proify.lyricon.** { *; }
