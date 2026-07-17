@@ -63,6 +63,7 @@ private class LunchWatchFaceHostView(context: Context) : FrameLayout(context) {
     private var downX = 0f
     private var downY = 0f
     private var downTime = 0L
+    private var longPressCancelled = false
     private var lastTapTime = 0L
     private var lastTapX = 0f
     private var lastTapY = 0f
@@ -119,36 +120,41 @@ private class LunchWatchFaceHostView(context: Context) : FrameLayout(context) {
                 downTime = System.currentTimeMillis()
                 downX = event.x
                 downY = event.y
+                longPressCancelled = false
             }
-            MotionEvent.ACTION_UP -> {
-                val elapsed = System.currentTimeMillis() - downTime
+            MotionEvent.ACTION_MOVE -> {
                 val dx = (event.x - downX).toDouble()
                 val dy = (event.y - downY).toDouble()
                 val slop = touchSlop.toDouble()
-                val inSlop = dx * dx + dy * dy <= slop * slop
-                if (inSlop) {
-                    if (elapsed >= longPressTimeout) {
-                        longPressHandler?.invoke()
+                if (dx * dx + dy * dy > slop * slop) {
+                    longPressCancelled = true
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                val elapsed = System.currentTimeMillis() - downTime
+                val slop = touchSlop.toDouble()
+                if (!longPressCancelled && elapsed >= longPressTimeout) {
+                    longPressHandler?.invoke()
+                } else {
+                    val now = System.currentTimeMillis()
+                    val ddx = (event.x - lastTapX).toDouble()
+                    val ddy = (event.y - lastTapY).toDouble()
+                    val doubleTap = lastTapTime > 0 &&
+                        now - lastTapTime <= doubleTapTimeout &&
+                        ddx * ddx + ddy * ddy <= slop * slop
+                    if (doubleTap) {
+                        doubleTapHandler?.invoke()
+                        lastTapTime = 0L
                     } else {
-                        val now = System.currentTimeMillis()
-                        val ddx = (event.x - lastTapX).toDouble()
-                        val ddy = (event.y - lastTapY).toDouble()
-                        val doubleTap = lastTapTime > 0 &&
-                            now - lastTapTime <= doubleTapTimeout &&
-                            ddx * ddx + ddy * ddy <= slop * slop
-                        if (doubleTap) {
-                            doubleTapHandler?.invoke()
-                            lastTapTime = 0L
-                        } else {
-                            lastTapTime = now
-                            lastTapX = event.x
-                            lastTapY = event.y
-                        }
+                        lastTapTime = now
+                        lastTapX = event.x
+                        lastTapY = event.y
                     }
                 }
             }
             MotionEvent.ACTION_CANCEL -> {
                 lastTapTime = 0L
+                longPressCancelled = true
             }
         }
         return super.dispatchTouchEvent(event)
