@@ -6,10 +6,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.PowerManager
-import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,16 +57,15 @@ private class LunchWatchFaceHostView(context: Context) : FrameLayout(context) {
     private var longPressHandler: (() -> Unit)? = null
     private var doubleTapHandler: (() -> Unit)? = null
 
-    private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
-        override fun onDoubleTap(e: MotionEvent): Boolean {
-            doubleTapHandler?.invoke()
-            return doubleTapHandler != null
-        }
-
-        override fun onLongPress(e: MotionEvent) {
-            longPressHandler?.invoke()
-        }
-    })
+    private val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
+    private val doubleTapTimeout = ViewConfiguration.getDoubleTapTimeout().toLong()
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private var downX = 0f
+    private var downY = 0f
+    private var downTime = 0L
+    private var lastTapTime = 0L
+    private var lastTapX = 0f
+    private var lastTapY = 0f
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -115,7 +114,43 @@ private class LunchWatchFaceHostView(context: Context) : FrameLayout(context) {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        gestureDetector.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downTime = System.currentTimeMillis()
+                downX = event.x
+                downY = event.y
+            }
+            MotionEvent.ACTION_UP -> {
+                val elapsed = System.currentTimeMillis() - downTime
+                val dx = (event.x - downX).toDouble()
+                val dy = (event.y - downY).toDouble()
+                val slop = touchSlop.toDouble()
+                val inSlop = dx * dx + dy * dy <= slop * slop
+                if (inSlop) {
+                    if (elapsed >= longPressTimeout) {
+                        longPressHandler?.invoke()
+                    } else {
+                        val now = System.currentTimeMillis()
+                        val ddx = (event.x - lastTapX).toDouble()
+                        val ddy = (event.y - lastTapY).toDouble()
+                        val doubleTap = lastTapTime > 0 &&
+                            now - lastTapTime <= doubleTapTimeout &&
+                            ddx * ddx + ddy * ddy <= slop * slop
+                        if (doubleTap) {
+                            doubleTapHandler?.invoke()
+                            lastTapTime = 0L
+                        } else {
+                            lastTapTime = now
+                            lastTapX = event.x
+                            lastTapY = event.y
+                        }
+                    }
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                lastTapTime = 0L
+            }
+        }
         return super.dispatchTouchEvent(event)
     }
 

@@ -20,7 +20,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -332,23 +335,54 @@ fun JbWatchFaceHost(
             .fillMaxSize()
             .background(Color.Black)
             .pointerInput(descriptor.stableKey, refreshToken, onLongPress, onDoubleTap) {
-                detectTapGestures(
-                    onTap = { point ->
-                        latestFace?.let {
-                            handleJbWatchTap(
-                                context = context,
-                                face = it,
-                                point = point,
-                                viewWidth = size.width.toFloat(),
-                                viewHeight = size.height.toFloat(),
-                                nowMillis = latestNowMillis,
-                                batteryLevel = latestBatteryLevel
-                            )
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val up = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        waitForUpOrCancellation()
+                    }
+                    if (up != null) {
+                        if (onDoubleTap != null) {
+                            val secondDown = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+                                awaitFirstDown(requireUnconsumed = false)
+                            }
+                            if (secondDown != null) {
+                                val secondUp = withTimeoutOrNull(500L) {
+                                    waitForUpOrCancellation()
+                                }
+                                if (secondUp != null) {
+                                    onDoubleTap()
+                                }
+                            } else {
+                                latestFace?.let {
+                                    handleJbWatchTap(
+                                        context = context,
+                                        face = it,
+                                        point = down.position,
+                                        viewWidth = size.width.toFloat(),
+                                        viewHeight = size.height.toFloat(),
+                                        nowMillis = latestNowMillis,
+                                        batteryLevel = latestBatteryLevel
+                                    )
+                                }
+                            }
+                        } else {
+                            latestFace?.let {
+                                handleJbWatchTap(
+                                    context = context,
+                                    face = it,
+                                    point = down.position,
+                                    viewWidth = size.width.toFloat(),
+                                    viewHeight = size.height.toFloat(),
+                                    nowMillis = latestNowMillis,
+                                    batteryLevel = latestBatteryLevel
+                                )
+                            }
                         }
-                    },
-                    onLongPress = onLongPress?.let { handler -> { _ -> handler() } },
-                    onDoubleTap = onDoubleTap?.let { handler -> { _ -> handler() } }
-                )
+                    } else {
+                        onLongPress?.invoke()
+                        waitForUpOrCancellation()
+                    }
+                }
             },
         contentAlignment = Alignment.Center
     ) {
