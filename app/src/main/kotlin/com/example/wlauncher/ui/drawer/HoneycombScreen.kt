@@ -279,6 +279,7 @@ fun HoneycombScreen(
         val overlayBlurActive = (longPressedApp != null || folderOpen) && blurEnabled && !suppressHeavyEffects
         val honeycombAutoScrollEdgePx = with(density) { HONEYCOMB_AUTO_SCROLL_EDGE_DP.dp.toPx() }
         val fastDragThresholdPx = with(density) { 10.dp.toPx() }
+        val horizontalBackThresholdPx = screenWidthPx * 0.28f
         fun currentScrollOffsetValue(): Float = resolveHoneycombScrollOffset(
             directScrollOffset = directScrollOffset,
             animatedScrollOffset = scrollOffset.value
@@ -663,11 +664,13 @@ fun HoneycombScreen(
                 }
                 .pointerInput(apps, positions, minScroll, maxScroll) {
                     val velocityTracker = VelocityTracker()
+                    var swipeBackTotalDx = 0f
                     try {
                         detectDragGestures(
                             onDragStart = { startOffset ->
                                 if (dragFromIndex != null || longPressedApp != null) return@detectDragGestures
                                 scrollCancelled.set(true)
+                                swipeBackTotalDx = 0f
                                 dragScrollActive = true
                                 wheelMomentumJob?.cancel()
                                 scope.launch { scrollOffset.stop() }
@@ -689,6 +692,16 @@ fun HoneycombScreen(
                                 if (dragFromIndex != null || longPressedApp != null) return@detectDragGestures
                                 if (returnTriggered) {
                                     change.consume()
+                                    return@detectDragGestures
+                                }
+                                swipeBackTotalDx += dragAmount.x
+                                if (swipeBackTotalDx > horizontalBackThresholdPx || swipeBackTotalDx < -horizontalBackThresholdPx) {
+                                    change.consume()
+                                    glidePressedKey = null
+                                    dragScrollActive = false
+                                    directScrollOffset = currentScrollOffsetValue()
+                                    returnTriggered = true
+                                    onScrollToTop()
                                     return@detectDragGestures
                                 }
                                 change.consume()
