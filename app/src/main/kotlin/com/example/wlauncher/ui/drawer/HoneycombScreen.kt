@@ -474,6 +474,9 @@ fun HoneycombScreen(
                                 glidePressedKey = null
                                 return@awaitEachGesture
                             }
+                            if (dragScrollActive) {
+                                return@awaitEachGesture
+                            }
 
                             onLongClick(app)
                             longPressedApp = app

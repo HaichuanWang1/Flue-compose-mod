@@ -1,5 +1,6 @@
 package com.flue.launcher.data.repository
 
+import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -69,6 +70,17 @@ class AppRepository(private val context: Context) {
         private const val APP_LIST_CACHE_ICON_DIR = "icons"
         private const val APP_LIST_CACHE_FILE = "snapshot.json"
         private const val APP_LIST_CACHE_VERSION = 3
+
+        private fun computeIconCacheSize(context: Context): Int {
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            val memClass = am?.memoryClass ?: 192
+            if (am?.isLowRamDevice == true) return 160
+            return when {
+                memClass >= 512 -> 768
+                memClass >= 256 -> 512
+                else -> 256
+            }
+        }
     }
 
     private val _allApps = MutableStateFlow<List<AppInfo>>(emptyList())
@@ -79,6 +91,9 @@ class AppRepository(private val context: Context) {
 
     private val _apps = MutableStateFlow<List<AppInfo>>(emptyList())
     val apps: StateFlow<List<AppInfo>> = _apps.asStateFlow()
+
+    private val _initialLoadComplete = MutableStateFlow(false)
+    val initialLoadComplete: StateFlow<Boolean> = _initialLoadComplete.asStateFlow()
 
     private var customOrder: List<String> = emptyList()
     private var customOrderIndexMap: Map<String, Int> = emptyMap()
@@ -99,9 +114,12 @@ class AppRepository(private val context: Context) {
     private val itemStorage = AppListItemStorage(context)
     private var itemCatalog: Map<String, AppInfo> = emptyMap()
     private var folderCatalog: List<StoredAppListFolder> = emptyList()
-    private val iconCache = object : LinkedHashMap<String, CachedIconSet>(160, 0.75f, true) {
+    private val maxIconCacheSize = computeIconCacheSize(context)
+    private val iconCache = object : LinkedHashMap<String, CachedIconSet>(
+        minOf(maxIconCacheSize, 256), 0.75f, true
+    ) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedIconSet>?): Boolean {
-            return size > 160
+            return size > maxIconCacheSize
         }
     }
 
@@ -306,6 +324,7 @@ class AppRepository(private val context: Context) {
         _allSelectableApps.value = sortApps(catalogItems)
         _allApps.value = sortApps(topLevelItems)
         applyFilters()
+        _initialLoadComplete.value = true
         saveCachedSnapshot(catalogItems)
     }
 
@@ -612,6 +631,7 @@ class AppRepository(private val context: Context) {
         _allSelectableApps.value = sortApps(catalogItems)
         _allApps.value = sortApps(topLevelItems)
         applyFilters()
+        _initialLoadComplete.value = true
         return true
     }
 
