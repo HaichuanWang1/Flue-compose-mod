@@ -197,10 +197,9 @@ private fun AppListLoadingOverlay(modifier: Modifier = Modifier) {
             text = "加载中...",
             color = Color(0xFFA0A0A0),
             fontSize = 14.sp
-                    )
-                }
-                }
-            }
+        )
+    }
+}
 
 @Composable
 fun LauncherScreen(vm: LauncherViewModel) {
@@ -1010,6 +1009,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         onDissolveFolder = vm::dissolveFolder,
                         onScrollToTop = { vm.setState(ScreenState.Face) }
                     )
+                }
                 }
             }
 
