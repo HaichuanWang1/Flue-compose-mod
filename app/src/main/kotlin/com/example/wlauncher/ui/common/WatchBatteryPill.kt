@@ -1,5 +1,6 @@
 package com.flue.launcher.ui.common
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -37,7 +38,8 @@ fun WatchBatteryPill(
     level: Int,
     charging: Boolean,
     modifier: Modifier = Modifier,
-    sizeScale: Float = 1f
+    sizeScale: Float = 1f,
+    onClick: (() -> Unit)? = null
 ) {
     val tint = when {
         level <= 10 -> WatchColors.ActiveRed
@@ -47,7 +49,9 @@ fun WatchBatteryPill(
     val backgroundTint = if (charging) Color(0xFF1F6C35) else Color(0xFF141414)
 
     Box(
-        modifier = modifier.graphicsLayer {
+        modifier = modifier
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .graphicsLayer {
             scaleX = sizeScale
             scaleY = sizeScale
         },

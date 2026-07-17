@@ -831,7 +831,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                             bottomFadeHeightDp = honeycombBottomFade,
                             bottomFadeBlurRadiusDp = if (blurEnabled && edgeBlurEnabled) honeycombEdgeBlurRadius else 0f,
                             hasNotifications = showNotification && notificationGroups.isNotEmpty(),
-                            onLongPress = null, // TODO: 暂时禁用——滚动时通过 requireUnconsumed 误触发表盘选择
+                            onLongPress = null, // 表盘选择已移至控制中心电池图标
                             onDoubleTap = if (
                                 doubleTapLockScreenEnabled &&
                                 launcherInteractive &&
@@ -845,7 +845,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                                 descriptor = selectedWatchFace,
                                 isFaceVisible = launcherInteractive && screenState == ScreenState.Face,
                                 refreshToken = watchFaceRefreshToken,
-                                onLongPress = null, // TODO: 暂时禁用——滚动时通过 requireUnconsumed 误触发表盘选择
+                                onLongPress = null, // 表盘选择已移至控制中心电池图标
                                 onDoubleTap = if (
                                     doubleTapLockScreenEnabled &&
                                     launcherInteractive &&
@@ -878,7 +878,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                                 descriptor = selectedWatchFace,
                                 isFaceVisible = launcherInteractive && screenState == ScreenState.Face,
                                 refreshToken = watchFaceRefreshToken,
-                                onLongPress = null, // TODO: 暂时禁用——滚动时通过 requireUnconsumed 误触发表盘选择
+                                onLongPress = null, // 表盘选择已移至控制中心电池图标
                                 onDoubleTap = if (
                                     doubleTapLockScreenEnabled &&
                                     launcherInteractive &&
@@ -1185,7 +1185,8 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         onOpenNotifications = { openNotificationsFrom(ScreenState.ControlCenter) },
                         onDismissToFace = { vm.setState(ScreenState.Face) },
                         showPowerButton = powerMenuButtonEnabled,
-                        onPowerClick = openPowerDialogWithAccessibility
+                        onPowerClick = openPowerDialogWithAccessibility,
+                        onOpenWatchFaceSettings = openWatchFaceChooser
                     )
                 }
             }

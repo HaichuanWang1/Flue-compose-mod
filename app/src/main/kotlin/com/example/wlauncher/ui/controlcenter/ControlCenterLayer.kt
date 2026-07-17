@@ -210,6 +210,7 @@ fun ControlCenterLayer(
     onDismissToFace: () -> Unit,
     showPowerButton: Boolean = false,
     onPowerClick: () -> Unit = {},
+    onOpenWatchFaceSettings: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -526,6 +527,7 @@ fun ControlCenterLayer(
                     level = batteryStatus.level,
                     charging = batteryStatus.charging,
                     sizeScale = 1.15f,
+                    onClick = onOpenWatchFaceSettings,
                     modifier = Modifier.align(Alignment.CenterStart)
                 )
                 Row(
