@@ -811,7 +811,9 @@ fun HoneycombScreen(
                     screenCenterY = screenCenterY,
                     screenHeightPx = screenHeightPx,
                     iconSizePx = iconSizePx,
-                    bufferRows = if (reducedMotionPhase()) 1 else 2,
+                    bufferRows = if (reducedMotionPhase() ||
+                        (longPressedApp == null && dragFromIndex == null && settlingApp == null && glidePressedKey == null)
+                    ) 1 else 2,
                     pinnedIndexes = listOfNotNull(menuPressedIndex, dragFromIndex, dragCurrentIndex, folderHoverIndex)
                 )
             }
@@ -873,7 +875,9 @@ fun HoneycombScreen(
                     iconSizePx = iconSizePx,
                     cellSize = cellSize
                 )
-                val reduceVisualLoad = reducedMotionPhase() &&
+                val idlePhase = longPressedApp == null && dragFromIndex == null &&
+                    settlingApp == null && glidePressedKey == null
+                val reduceVisualLoad = (reducedMotionPhase() || idlePhase) &&
                     !isDragged &&
                     settlingKey != app.componentKey &&
                     menuPressedKey != appKey &&
