@@ -23,7 +23,7 @@ Never push unless explicitly told to.
 
 ## Signing
 
-Release needs `keystore.properties` (in `app/`) or env vars `FLUE_SIGNING_*`. The repo has a debug keystore (`app/keystore.jks`, pwd `flue123456`) for local debug builds.
+Release needs `keystore.properties` (in `app/`) or env vars `FLUE_SIGNING_*`. There's a debug keystore (`app/keystore.jks`) for local debug builds; add `keystore.properties` pointing to it to use release signing.
 
 ## Source packages (three roots)
 
