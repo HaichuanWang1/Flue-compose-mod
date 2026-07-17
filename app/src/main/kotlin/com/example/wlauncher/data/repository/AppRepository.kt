@@ -129,9 +129,20 @@ class AppRepository(private val context: Context) {
                 packageRefreshJob?.cancel()
                 packageRefreshJob = scope.launch {
                     kotlinx.coroutines.delay(350)
+                    val changedPkg = intent?.data?.schemeSpecificPart
+                    if (changedPkg != null) {
+                        invalidateIconsForPackage(changedPkg)
+                    }
                     refreshAsync()
                 }
             }
+        }
+    }
+
+    private fun invalidateIconsForPackage(packageName: String) {
+        val prefix = packageName + "/"
+        synchronized(iconCache) {
+            iconCache.keys.removeAll { it.contains(prefix) }
         }
     }
 
