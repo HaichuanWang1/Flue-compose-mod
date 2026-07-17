@@ -25,6 +25,16 @@ Never push unless explicitly told to.
 
 Release needs `keystore.properties` (in `app/`) or env vars `FLUE_SIGNING_*`. There's a debug keystore (`app/keystore.jks`) for local debug builds; add `keystore.properties` pointing to it to use release signing.
 
+## Sensitive content (DO NOT PUBLISH)
+
+The `.gitignore` already excludes these — never `git add -f` or commit them:
+- `keystore.properties` — signing passwords & key alias
+- `*.jks` / `keystore/` — keystore files
+- `local.properties` — SDK paths (personal machine info)
+- `.gradle/`, `.idea/`, `.kotlin/` — IDE & build caches
+
+When adding new files, check they don't contain: ADB serials, file system paths with usernames, API keys, passwords.
+
 ## Source packages (three roots)
 
 | Root | Content |
