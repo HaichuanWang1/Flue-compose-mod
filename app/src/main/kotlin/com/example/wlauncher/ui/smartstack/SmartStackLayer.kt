@@ -959,6 +959,40 @@ fun WidgetPageLayer(
             }
         }
     }
+    val recoveredSlots = remember { mutableSetOf<Int>() }
+    LaunchedEffect(widgetCards) {
+        for (card in widgetCards) {
+            if (card.widgetIndex in recoveredSlots) continue
+            if (card.widget.widgetId == -1) {
+                recoveredSlots.add(card.widgetIndex)
+                continue
+            }
+            val valid = runCatching { appWidgetManager.getAppWidgetInfo(card.widget.widgetId) }
+                .getOrNull() != null
+            if (!valid) {
+                val newId = runCatching { appWidgetHost.allocateAppWidgetId() }.getOrNull()
+                if (newId != null) {
+                    val providerInfo = widgetRepository.findProviderInfo(card.widget.widgetKey)
+                    if (providerInfo != null) {
+                        val bound = runCatching {
+                            appWidgetManager.bindAppWidgetIdIfAllowed(
+                                newId,
+                                providerInfo.provider,
+                                buildWidgetBindOptions(providerInfo)
+                            )
+                        }.getOrDefault(false)
+                        if (bound) {
+                            onSetWidget(
+                                card.widgetIndex,
+                                widgetRepository.serializeSlotValue(card.widget.copy(widgetId = newId))
+                            )
+                        }
+                    }
+                }
+            }
+            recoveredSlots.add(card.widgetIndex)
+        }
+    }
     val widgetSections = remember(widgetCards) { groupWidgetCardsIntoSections(widgetCards) }
     val widgetCardCenters = remember { mutableStateMapOf<String, Offset>() }
     val widgetCardBounds = remember { mutableStateMapOf<String, Rect>() }
