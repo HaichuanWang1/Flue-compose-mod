@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -215,7 +216,7 @@ fun HoneycombScreen(
     var initialScrollPositionResolved by remember { mutableStateOf(false) }
     var directScrollOffset by remember { mutableFloatStateOf(Float.NaN) }
     var dragScrollActive by remember { mutableStateOf(false) }
-    var latchScrollHappened by remember { mutableStateOf(false) }
+    var scrollGeneration by remember { mutableIntStateOf(0) }
     var returnTriggered by remember { mutableStateOf(false) }
     var fastScrollActive by remember { mutableStateOf(false) }
     var fastScrollResetJob by remember { mutableStateOf<Job?>(null) }
@@ -449,7 +450,7 @@ fun HoneycombScreen(
                     }
                 }
                 .platformBlur(16f, overlayBlurActive)
-                .pointerInput(apps, positions) {
+                .pointerInput(apps, positions, scrollGeneration) {
                     val menuDragStartPx = with(density) { HONEYCOMB_MENU_DRAG_START_DP.dp.toPx() }
                     val folderHoverMaxSpeedPxPerMs = with(density) {
                         HONEYCOMB_FOLDER_HOVER_MAX_SPEED_DP_PER_MS.dp.toPx()
@@ -457,7 +458,6 @@ fun HoneycombScreen(
                     try {
                         awaitEachGesture {
                             val down = awaitPrimaryDown()
-                            latchScrollHappened = false
                             val startIndex = findNearestHoneycombIndex(
                                 pointer = down.position,
                                 positions = positions,
@@ -474,9 +474,6 @@ fun HoneycombScreen(
                             )
                             if (longPress == null) {
                                 glidePressedKey = null
-                                return@awaitEachGesture
-                            }
-                            if (latchScrollHappened) {
                                 return@awaitEachGesture
                             }
 
@@ -666,8 +663,8 @@ fun HoneycombScreen(
                         detectDragGestures(
                             onDragStart = { startOffset ->
                                 if (dragFromIndex != null || longPressedApp != null) return@detectDragGestures
+                                scrollGeneration++
                                 dragScrollActive = true
-                                latchScrollHappened = true
                                 wheelMomentumJob?.cancel()
                                 scope.launch { scrollOffset.stop() }
                                 directScrollOffset = currentScrollOffsetValue()
