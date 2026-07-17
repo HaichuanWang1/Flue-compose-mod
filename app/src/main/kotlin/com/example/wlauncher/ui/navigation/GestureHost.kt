@@ -102,6 +102,9 @@ fun GestureHost(
                                     if (isHorizontal && totalDx > 80) {
                                         onStateChange(ScreenState.Face)
                                         change.consume()
+                                    } else if (isHorizontal && totalDx < -80) {
+                                        onStateChange(ScreenState.Face)
+                                        change.consume()
                                     }
                                 }
                                 ScreenState.App -> Unit
