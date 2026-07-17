@@ -243,13 +243,11 @@ object JbWatchParser {
     private fun decodePxml(file: File): String {
         val raw = file.readText(Charsets.UTF_8).trim()
         if (raw.startsWith("<Watch")) return sanitizeJbXml(raw)
-        // 参考 WFTools 实现：字符交换后直接 Base64 解码
-        var temp = raw.replace("g", "#").replace("D", "g").replace("#", "D")
-        temp = temp.replace("4", "#").replace("L", "4").replace("#", "L")
+        val decodeMap = JB_CUSTOM_BASE64.mapIndexed { i, c -> c to JB_STANDARD_BASE64[i] }.toMap()
+        val swapped = raw.map { decodeMap[it] ?: it }.joinToString("")
         return runCatching {
-            sanitizeJbXml(Base64.decode(temp, Base64.DEFAULT).toString(Charsets.UTF_8))
+            sanitizeJbXml(Base64.decode(swapped, Base64.DEFAULT).toString(Charsets.UTF_8))
         }.recoverCatching {
-            // 回退：标准 Base64 直接解码
             val std = raw.filter { ch -> ch in JB_STANDARD_BASE64 || ch == '=' }
             sanitizeJbXml(Base64.decode(std, Base64.DEFAULT).toString(Charsets.UTF_8))
         }.getOrElse { error("watch.pxml 解码失败") }
@@ -557,8 +555,11 @@ private fun drawJbTextLayer(
         1f -> rect.right
         else -> rect.centerX()
     }
-    val yBase = rect.centerY() + (bmFont?.base ?: 0) - (bmFont?.lineHeight ?: 0) / 2f
-    val y = if (bmFont != null) yBase else rect.centerY() - (paint.descent() + paint.ascent()) / 2f
+    val y = if (bmFont != null) {
+        rect.centerY() + bmFont.base - bmFont.lineHeight / 2f
+    } else {
+        rect.centerY() - (paint.descent() + paint.ascent()) / 2f
+    }
 
     if (layer.outline?.equals("Outline", ignoreCase = true) == true && layer.oSize > 0) {
         val outlinePaint = Paint(paint).apply {
@@ -1326,7 +1327,7 @@ private fun drawJbBitmapText(canvas: AndroidCanvas, text: String, cx: Float, cy:
     for (ch in text) {
         val g = font.glyphs[ch.code] ?: continue
         val src = Rect(g.x, g.y, g.x + g.width, g.y + g.height)
-        val dst = RectF(cursorX + g.xoffset, cy - font.base + g.yoffset, cursorX + g.xoffset + g.width, cy - font.base + g.yoffset + g.height)
+        val dst = RectF(cursorX + g.xoffset, cy + g.yoffset, cursorX + g.xoffset + g.width, cy + g.yoffset + g.height)
         canvas.drawBitmap(font.bitmap, src, dst, paint)
         cursorX += g.xadvance
     }
