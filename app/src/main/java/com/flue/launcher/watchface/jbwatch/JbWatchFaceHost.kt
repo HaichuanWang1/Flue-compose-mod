@@ -13,6 +13,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.media.MediaPlayer
 import android.os.BatteryManager
+import android.os.PowerManager
 import android.text.format.DateFormat
 import android.util.Base64
 import android.util.LruCache
@@ -80,7 +81,8 @@ data class JbWatchRoot(
     val indLoc: String,
     val indBg: String,
     val hotwordLoc: String,
-    val hotwordBg: String
+    val hotwordBg: String,
+    val protection: String = ""
 )
 
 data class JbWatchLayer(
@@ -97,7 +99,7 @@ data class JbWatchLayer(
     val width: Int = 0,
     val height: Int = 0,
     val gifDelay: Int = 0,
-    val display: String = "b",
+    val display: String = "bd",
     val text: String = "",
     val textSize: Float = 24f,
     val animScaleX: Float = 100f,
@@ -145,10 +147,17 @@ data class JbWatchFace(
 object JbWatchParser {
     fun parse(rootDir: File): JbWatchFace {
         val watchXml = File(rootDir, "watch.xml")
-        val pxmlFile = File(rootDir, "watch.pxml")
-        require(watchXml.isFile && pxmlFile.isFile) { "缺少 watch.xml / watch.pxml" }
+        require(watchXml.isFile) { "缺少 watch.xml" }
         val root = parseRoot(watchXml)
-        val layers = parseLayers(pxmlFile, rootDir)
+        val pxmlFile = File(rootDir, "watch.pxml")
+        val isProtected = root.protection == "y"
+        val layersFile = if (isProtected) {
+            require(pxmlFile.isFile) { "缺少 watch.pxml (protection=y)" }
+            pxmlFile
+        } else {
+            watchXml
+        }
+        val layers = parseLayers(layersFile, rootDir)
         return JbWatchFace(
             root = root,
             layers = layers,
@@ -177,7 +186,8 @@ object JbWatchParser {
             indLoc = sanitizeVisibleText(root.getAttribute("ind_loc")).ifBlank { "tc" },
             indBg = sanitizeVisibleText(root.getAttribute("ind_bg")).ifBlank { "Y" },
             hotwordLoc = sanitizeVisibleText(root.getAttribute("hotword_loc")).ifBlank { "tc" },
-            hotwordBg = sanitizeVisibleText(root.getAttribute("hotword_bg")).ifBlank { "Y" }
+            hotwordBg = sanitizeVisibleText(root.getAttribute("hotword_bg")).ifBlank { "Y" },
+            protection = sanitizeVisibleText(root.getAttribute("protection")).lowercase(Locale.ROOT)
         )
     }
 
@@ -207,7 +217,7 @@ object JbWatchParser {
                         width = element.getAttribute("width").toIntOrZero(),
                         height = element.getAttribute("height").toIntOrZero(),
                         gifDelay = element.getAttribute("gif_delay").toIntOrZero(),
-                        display = element.getAttribute("display").ifBlank { "b" },
+                        display = element.getAttribute("display").ifBlank { "bd" },
                         text = sanitizeVisibleText(element.getAttribute("text")),
                         textSize = element.getAttribute("text_size").toFloatOrZero(default = 24f),
                         animScaleX = element.getAttribute("anim_scale_x").toFloatOrZero(default = 100f),
@@ -241,16 +251,23 @@ object JbWatchParser {
     }
 
     private fun decodePxml(file: File): String {
-        val raw = file.readText(Charsets.UTF_8).trim()
-        if (raw.startsWith("<Watch")) return sanitizeJbXml(raw)
+        val bytes = file.readBytes()
+        val rawText = detectAndDecode(bytes).trim()
+        if (rawText.startsWith("<Watch")) return sanitizeJbXml(rawText)
         val decodeMap = JB_CUSTOM_BASE64.mapIndexed { i, c -> c to JB_STANDARD_BASE64[i] }.toMap()
-        val swapped = raw.map { decodeMap[it] ?: it }.joinToString("")
+        val swapped = rawText.map { decodeMap[it] ?: it }.joinToString("")
         return runCatching {
             sanitizeJbXml(Base64.decode(swapped, Base64.DEFAULT).toString(Charsets.UTF_8))
         }.recoverCatching {
-            val std = raw.filter { ch -> ch in JB_STANDARD_BASE64 || ch == '=' }
+            val std = rawText.filter { ch -> ch in JB_STANDARD_BASE64 || ch == '=' }
             sanitizeJbXml(Base64.decode(std, Base64.DEFAULT).toString(Charsets.UTF_8))
         }.getOrElse { error("watch.pxml 解码失败") }
+    }
+
+    private fun detectAndDecode(bytes: ByteArray): String {
+        val utf8 = bytes.toString(Charsets.UTF_8)
+        if ('\uFFFD' !in utf8) return utf8
+        return bytes.toString(Charsets.ISO_8859_1)
     }
 
     private fun sanitizeJbXml(raw: String): String {
@@ -318,6 +335,7 @@ fun JbWatchFaceHost(
     }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     val batteryLevel = rememberJbWatchBattery(context)
+    val isDim = rememberDimMode(context)
     val is24Hour = remember(context) { DateFormat.is24HourFormat(context) }
     val latestFace by rememberUpdatedState(face)
     val latestNowMillis by rememberUpdatedState(nowMillis)
@@ -400,7 +418,8 @@ fun JbWatchFaceHost(
                             batteryLevel = batteryLevel,
                             width = size.width.toInt(),
                             height = size.height.toInt(),
-                            is24Hour = is24Hour
+                            is24Hour = is24Hour,
+                            isDim = isDim
                         )
                     }
                 }
@@ -432,6 +451,37 @@ private fun rememberJbWatchBattery(context: Context): Int {
     return level
 }
 
+@Composable
+private fun rememberDimMode(context: Context): Boolean {
+    var dim by remember { mutableStateOf(!isScreenInteractive(context)) }
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                dim = when (intent.action) {
+                    Intent.ACTION_SCREEN_OFF -> true
+                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> false
+                    else -> !isScreenInteractive(context)
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        onDispose { runCatching { context.unregisterReceiver(receiver) } }
+    }
+    return dim
+}
+
+private fun isScreenInteractive(context: Context): Boolean {
+    return runCatching {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        pm.isInteractive
+    }.getOrDefault(true)
+}
+
 private fun drawJbFace(
     canvas: AndroidCanvas,
     face: JbWatchFace,
@@ -439,7 +489,8 @@ private fun drawJbFace(
     batteryLevel: Int,
     width: Int,
     height: Int,
-    is24Hour: Boolean
+    is24Hour: Boolean,
+    isDim: Boolean
 ) {
     val canvasWidth = face.designWidth.coerceAtLeast(1)
     val canvasHeight = face.designHeight.coerceAtLeast(1)
@@ -452,7 +503,7 @@ private fun drawJbFace(
     canvas.translate(offsetX, offsetY)
     canvas.scale(scale, scale)
     face.layers.forEach { layer ->
-        drawJbLayer(canvas, face, layer, nowMillis, batteryLevel, is24Hour)
+        drawJbLayer(canvas, face, layer, nowMillis, batteryLevel, is24Hour, isDim)
     }
     canvas.restore()
 }
@@ -463,13 +514,15 @@ private fun drawJbLayer(
     layer: JbWatchLayer,
     nowMillis: Long,
     batteryLevel: Int,
-    is24Hour: Boolean
+    is24Hour: Boolean,
+    isDim: Boolean
 ) {
+    if (!shouldDisplayLayer(layer, isDim)) return
     when (layer.type) {
         "image", "image_gif", "image_cond" -> {
             drawJbBitmapLayer(canvas, face, layer, nowMillis, batteryLevel)
         }
-        "text" -> drawJbTextLayer(canvas, face, layer, nowMillis, batteryLevel, is24Hour)
+        "text" -> drawJbTextLayer(canvas, face, layer, nowMillis, batteryLevel, is24Hour, isDim)
         "text_curved" -> drawJbCurvedTextLayer(canvas, face, layer, nowMillis, batteryLevel, is24Hour)
         "ring" -> drawJbRingLayer(canvas, face, layer, nowMillis, batteryLevel)
         "markers_hm" -> drawJbMarkersLayer(canvas, face, layer)
@@ -484,7 +537,6 @@ private fun drawJbBitmapLayer(
     nowMillis: Long,
     batteryLevel: Int
 ) {
-    if (!shouldDisplayLayer(layer, nowMillis, batteryLevel)) return
     val file = resolveJbWatchPath(face.rootDir, layer, nowMillis) ?: return
     val bitmap = JbWatchBitmapCache.get(file) ?: return
     val displaySize = resolveJbBitmapDisplaySize(layer, bitmap.width, bitmap.height)
@@ -509,11 +561,10 @@ private fun drawJbTextLayer(
     layer: JbWatchLayer,
     nowMillis: Long,
     batteryLevel: Int,
-    is24Hour: Boolean
+    is24Hour: Boolean,
+    isDim: Boolean
 ) {
-    if (!shouldDisplayLayer(layer, nowMillis, batteryLevel)) return
     var text = resolveJbText(layer.text, nowMillis, batteryLevel, is24Hour)
-    // 安全保障：如果变量未被解析（含花括号），强制二次解析
     if ('{' in text) {
         text = text
             .replace("{dh23z}", String.format("%02d", Calendar.getInstance().apply { timeInMillis = nowMillis }.get(Calendar.HOUR_OF_DAY)))
@@ -526,8 +577,9 @@ private fun drawJbTextLayer(
     val fontName = layer.font.orEmpty().trim()
     val bmFont = if (fontName.startsWith("bm:")) JbBmFontCache.get(face.rootDir, fontName) else null
 
+    val textColor = if (isDim) parseJbColor(layer.colorDim) else parseJbColor(layer.color)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = parseJbColor(layer.color)
+        color = textColor
         textSize = layer.textSize
         textAlign = when (jbAlignmentHorizontal(layer.alignment)) {
             0f -> Paint.Align.LEFT
@@ -589,7 +641,6 @@ private fun drawJbCurvedTextLayer(
     batteryLevel: Int,
     is24Hour: Boolean
 ) {
-    if (!shouldDisplayLayer(layer, nowMillis, batteryLevel)) return
     val text = resolveJbText(layer.text, nowMillis, batteryLevel, is24Hour)
     if (text.isBlank()) return
     val center = jbLayerCenter(face, layer)
@@ -622,7 +673,6 @@ private fun drawJbRingLayer(
     nowMillis: Long,
     batteryLevel: Int
 ) {
-    if (!shouldDisplayLayer(layer, nowMillis, batteryLevel)) return
     val center = jbLayerCenter(face, layer)
     val outer = layer.radiusOuter.takeIf { it > 0f } ?: layer.radius.takeIf { it > 0f } ?: 210f
     val inner = layer.radiusInner.takeIf { it > 0f } ?: (outer - 14f)
@@ -702,15 +752,15 @@ private fun resolveJbText(raw: String, nowMillis: Long, batteryLevel: Int, is24H
         .replace("{ddw}", weekday)
         .replace("{ddw0}", dayOfWeekZero.toString())
         .replace("{dmm}", monthName)
-        .replace("{wtd}", batteryLevel.toString())
         .replace("{pblp}", batteryLevel.toString())
         .replace("{blp}", batteryLevel.toString())
         .replace("{bl}", batteryLevel.toString())
         .replace("{ssc}", "0")
         .replace("{shr}", "--")
-        .replace("{wtld}", "--")
-        .replace("{wthd}", "--")
         .replace("{wt}", "--")
+        .replace("{wtd}", "--°C")
+        .replace("{wtld}", "--°C")
+        .replace("{wthd}", "--°C")
         .replace("{dampm}", if (calendar.get(Calendar.AM_PM) == Calendar.AM) "AM" else "PM")
         .replace("{time}", if (is24Hour) SimpleDateFormat("HH:mm", Locale.getDefault()).format(nowMillis) else SimpleDateFormat("hh:mm", Locale.getDefault()).format(nowMillis))
 }
@@ -742,7 +792,7 @@ private fun resolveJbRect(face: JbWatchFace, layer: JbWatchLayer, contentWidth: 
 private fun resolveJbRect(face: JbWatchFace, layer: JbWatchLayer, contentWidth: Float, contentHeight: Float): RectF {
     val anchor = jbAlignmentAnchor(layer.alignment)
     val positionX = face.designWidth / 2f + layer.x
-    val positionY = face.designHeight / 2f - layer.y
+    val positionY = face.designHeight / 2f + layer.y
     val left = positionX - contentWidth * anchor.first
     val top = positionY - contentHeight * anchor.second
     return RectF(left, top, left + contentWidth, top + contentHeight)
@@ -751,7 +801,7 @@ private fun resolveJbRect(face: JbWatchFace, layer: JbWatchLayer, contentWidth: 
 private fun jbLayerCenter(face: JbWatchFace, layer: JbWatchLayer): Offset {
     return Offset(
         x = face.designWidth / 2f + layer.x,
-        y = face.designHeight / 2f - layer.y
+        y = face.designHeight / 2f + layer.y
     )
 }
 
@@ -834,7 +884,6 @@ private fun evaluateJbNumericExpression(raw: String, nowMillis: Long, batteryLev
         .replace("{blp}", batteryLevel.toString())
         .replace("{bl}", batteryLevel.toString())
         .replace("{pblp}", batteryLevel.toString())
-        .replace("{wt}", batteryLevel.toString())
         .replace("{ssc}", stepCount.toString())
         .replace("{sgx}", "0")
         .replace("{sgy}", "0")
@@ -931,11 +980,12 @@ private fun parseJbColor(raw: String): Int {
     return runCatching { android.graphics.Color.parseColor("#$hex") }.getOrElse { android.graphics.Color.WHITE }
 }
 
-private fun shouldDisplayLayer(layer: JbWatchLayer, nowMillis: Long, batteryLevel: Int): Boolean {
+private fun shouldDisplayLayer(layer: JbWatchLayer, isDim: Boolean): Boolean {
+    if (layer.display == "b" && isDim) return false
+    if (layer.display == "d" && !isDim) return false
     val expr = layer.condValue?.takeIf { it.isNotBlank() } ?: return true
     return when {
         "{wci}" in expr -> evaluateWeatherCondition(expr, weatherCode = "01d")
-        "{pblp}" in expr || "{wtd}" in expr -> batteryLevel >= 0
         else -> true
     }
 }
@@ -1027,7 +1077,7 @@ private fun handleJbWatchTap(
         .asReversed()
         .firstOrNull { layer ->
             val hitSize = resolveJbHitContentSize(face, layer, nowMillis)
-                shouldDisplayLayer(layer, nowMillis, batteryLevel) &&
+                !(layer.display == "d") &&
                 !layer.tapAction.isNullOrBlank() &&
                 resolveJbRect(
                     face = face,

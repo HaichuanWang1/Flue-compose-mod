@@ -80,8 +80,15 @@ object JbWatchFaceStorage {
 
     fun hasJbWatchStructure(rootDir: File): Boolean {
         val watchXml = File(rootDir, "watch.xml")
-        val watchPxml = File(rootDir, "watch.pxml")
-        return watchXml.isFile && watchPxml.isFile
+        if (!watchXml.isFile) return false
+        val isProtected = runCatching {
+            val doc = newSecureDocumentBuilderFactory().newDocumentBuilder().parse(watchXml)
+            doc.documentElement?.getAttribute("protection")?.trim()?.lowercase() == "y"
+        }.getOrDefault(false)
+        if (isProtected) {
+            return File(rootDir, "watch.pxml").isFile
+        }
+        return true
     }
 
     private fun parseMetadata(rootDir: File): JbWatchMetadata {
