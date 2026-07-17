@@ -88,6 +88,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -202,6 +203,13 @@ fun HoneycombScreen(
     val settlingX = remember { Animatable(0f) }
     val settlingY = remember { Animatable(0f) }
     val effectiveEdgeBlur = edgeBlurEnabled && !suppressHeavyEffects
+    val isLowEndDevice = remember {
+        val hw = Build.HARDWARE.lowercase(Locale.ROOT)
+        hw.contains("spreadtrum") || hw.contains("sc9832") || hw.contains("uwp")
+    }
+    val effectiveFisheyeEnabled = fisheyeEnabled && !isLowEndDevice
+    val effectiveEdgeSpacingCompression = edgeSpacingCompressionEnabled && !isLowEndDevice
+    val effectiveFastFlowAnimation = fastFlowAnimationEnabled && !isLowEndDevice
     var focusReady by remember { mutableStateOf(false) }
     var wheelMomentumJob by remember { mutableStateOf<Job?>(null) }
     var initialScrollPositionResolved by remember { mutableStateOf(false) }
@@ -931,7 +939,7 @@ fun HoneycombScreen(
                         screenHeight = screenHeightPx,
                         itemSize = iconSizePx,
                         strengthPercent = fisheyeStrengthPercent,
-                        enabled = fisheyeEnabled && edgeSpacingCompressionEnabled &&
+                        enabled = effectiveFisheyeEnabled && effectiveEdgeSpacingCompression &&
                             dragFromIndex == null &&
                             longPressedApp == null
                     )
@@ -947,7 +955,7 @@ fun HoneycombScreen(
                         onClick = {
                             if (longPressedApp == null && dragFromIndex == null) {
                                 val flowOffset = honeycombFlowOffset(
-                                    enabled = fastFlowAnimationEnabled,
+                                    enabled = effectiveFastFlowAnimation,
                                     rowCenterY = screenCenterY + slotY + currentScroll,
                                     screenCenterY = screenCenterY,
                                     slowTopY = fastFlowSlowTopY,
@@ -963,7 +971,7 @@ fun HoneycombScreen(
                                     screenHeight = screenHeightPx,
                                     itemSize = iconSizePx,
                                     strengthPercent = fisheyeStrengthPercent,
-                                    enabled = fisheyeEnabled && edgeSpacingCompressionEnabled
+                                    enabled = effectiveFisheyeEnabled && effectiveEdgeSpacingCompression
                                 )
                                 val sx = clickCenterX + clickEdgeOffsetX
                                 val syPos = clickCenterY + flowOffset + entryOffsetY
@@ -988,7 +996,7 @@ fun HoneycombScreen(
                                 val baseX = slotX
                                 val baseY = slotY
                                 val flowOffset = honeycombFlowOffset(
-                                    enabled = fastFlowAnimationEnabled,
+                                    enabled = effectiveFastFlowAnimation,
                                     rowCenterY = screenCenterY + baseY + currentScroll,
                                     screenCenterY = screenCenterY,
                                     slowTopY = fastFlowSlowTopY,
@@ -1014,7 +1022,7 @@ fun HoneycombScreen(
                                 val dx = actualCenterX - screenCenterX
                                 val dy = actualCenterY - screenCenterY
                                 val dist = sqrt(dx * dx + dy * dy)
-                                val scale = if (fisheyeEnabled) {
+                                val scale = if (effectiveFisheyeEnabled) {
                                     fisheyeScale(dist, fisheyeMaxDistance, minScale = fisheyeMinScale)
                                 } else {
                                     1f
@@ -1024,7 +1032,7 @@ fun HoneycombScreen(
                                 val itemAlpha = when {
                                     isDragged -> 0f
                                     settlingKey == app.componentKey -> 0f
-                                    else -> if (fisheyeEnabled) scale.coerceIn(0.24f, 1f) else 1f
+                                    else -> if (effectiveFisheyeEnabled) scale.coerceIn(0.24f, 1f) else 1f
                                 }
                                 alpha = itemAlpha * entryVisuals.iconProgress
                                 shape = CircleShape
@@ -1047,7 +1055,7 @@ fun HoneycombScreen(
                 val dragDx = scalePointer.x - screenCenterX
                 val dragDy = scalePointer.y - screenCenterY
                 val dragDist = sqrt(dragDx * dragDx + dragDy * dragDy)
-                val dragScale = if (fisheyeEnabled) {
+                val dragScale = if (effectiveFisheyeEnabled) {
                     fisheyeScale(dragDist, fisheyeMaxDistance, minScale = fisheyeMinScale)
                 } else {
                     1f
@@ -1073,7 +1081,7 @@ fun HoneycombScreen(
                             translationY = dragOverlayPointer.y - iconSizePx / 2f
                             scaleX = dragScale
                             scaleY = dragScale
-                            alpha = if (fisheyeEnabled) dragScale.coerceIn(0.24f, 1f) else 1f
+                            alpha = if (effectiveFisheyeEnabled) dragScale.coerceIn(0.24f, 1f) else 1f
                             shape = CircleShape
                         }
                 )
@@ -1111,14 +1119,14 @@ fun HoneycombScreen(
                         val dx = settlingX.value - screenCenterX
                         val dy = settlingY.value - screenCenterY
                         val dist = sqrt(dx * dx + dy * dy)
-                        val scale = if (fisheyeEnabled) {
+                        val scale = if (effectiveFisheyeEnabled) {
                             fisheyeScale(dist, fisheyeMaxDistance, minScale = fisheyeMinScale)
                         } else {
                             1f
                         }
                         scaleX = scale
                         scaleY = scale
-                        alpha = if (fisheyeEnabled) scale.coerceIn(0.24f, 1f) else 1f
+                        alpha = if (effectiveFisheyeEnabled) scale.coerceIn(0.24f, 1f) else 1f
                         shape = CircleShape
                     }
             )
