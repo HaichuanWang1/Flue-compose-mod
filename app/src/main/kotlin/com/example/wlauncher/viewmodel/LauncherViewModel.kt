@@ -127,6 +127,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val KEY_SHOW_STEP_COUNT = booleanPreferencesKey("show_step_count")
         val KEY_SHOW_NOTIFICATION = booleanPreferencesKey("show_notification")
         val KEY_SHOW_ONGOING_NOTIFICATIONS = booleanPreferencesKey("show_ongoing_notifications")
+        val KEY_HONEYCOMB_EDGE_SCROLL_ENABLED = booleanPreferencesKey("honeycomb_edge_scroll_enabled")
+        val KEY_HONEYCOMB_EDGE_SCROLL_WIDTH = intPreferencesKey("honeycomb_edge_scroll_width")
+        val KEY_HONEYCOMB_EDGE_SCROLL_MULTIPLIER_TENTHS = intPreferencesKey("honeycomb_edge_scroll_multiplier_tenths")
         val KEY_ROTARY_HAPTICS_ENABLED = booleanPreferencesKey("rotary_haptics_enabled")
         val KEY_NOTIFICATION_SETTING_MIGRATED = booleanPreferencesKey("notification_setting_migrated")
         val KEY_GESTURE_SWAP_WIDGET_APPS = booleanPreferencesKey("gesture_swap_widget_apps")
@@ -370,6 +373,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         MutableStateFlow(HoneycombFastScrollOptimizationMode.Standard)
     val honeycombFastScrollOptimizationMode: StateFlow<HoneycombFastScrollOptimizationMode> =
         _honeycombFastScrollOptimizationMode.asStateFlow()
+    private val _honeycombEdgeScrollEnabled = MutableStateFlow(true)
+    val honeycombEdgeScrollEnabled: StateFlow<Boolean> = _honeycombEdgeScrollEnabled.asStateFlow()
+    private val _honeycombEdgeScrollWidth = MutableStateFlow(10)
+    val honeycombEdgeScrollWidth: StateFlow<Int> = _honeycombEdgeScrollWidth.asStateFlow()
+    private val _honeycombEdgeScrollMultiplier = MutableStateFlow(3.0f)
+    val honeycombEdgeScrollMultiplier: StateFlow<Float> = _honeycombEdgeScrollMultiplier.asStateFlow()
     private val _appListFisheyeEnabled = MutableStateFlow(true)
     val appListFisheyeEnabled: StateFlow<Boolean> = _appListFisheyeEnabled.asStateFlow()
     private val _materialHoneycombTopFisheyeEnabled = MutableStateFlow(true)
@@ -786,6 +795,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     HoneycombFastScrollOptimizationMode.fromId(prefs[KEY_HONEYCOMB_FAST_SCROLL_OPTIMIZATION_MODE])
                 if (_honeycombFastScrollOptimizationMode.value != loadedFastScrollOptimizationMode) {
                     _honeycombFastScrollOptimizationMode.value = loadedFastScrollOptimizationMode
+                }
+
+                val loadedEdgeScrollEnabled = prefs[KEY_HONEYCOMB_EDGE_SCROLL_ENABLED] ?: true
+                if (_honeycombEdgeScrollEnabled.value != loadedEdgeScrollEnabled) {
+                    _honeycombEdgeScrollEnabled.value = loadedEdgeScrollEnabled
+                }
+                val loadedEdgeScrollWidth = (prefs[KEY_HONEYCOMB_EDGE_SCROLL_WIDTH] ?: 10).coerceIn(6, 20)
+                if (_honeycombEdgeScrollWidth.value != loadedEdgeScrollWidth) {
+                    _honeycombEdgeScrollWidth.value = loadedEdgeScrollWidth
+                }
+                val loadedMultiplierTenths = (prefs[KEY_HONEYCOMB_EDGE_SCROLL_MULTIPLIER_TENTHS] ?: 30).coerceIn(10, 100)
+                val loadedMultiplier = loadedMultiplierTenths / 10f
+                if (_honeycombEdgeScrollMultiplier.value != loadedMultiplier) {
+                    _honeycombEdgeScrollMultiplier.value = loadedMultiplier
                 }
 
                 val loadedFisheyeEnabled = prefs[KEY_APP_LIST_FISHEYE] ?: true
@@ -1655,6 +1678,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         persist { store.edit { it[KEY_HONEYCOMB_FAST_SCROLL_OPTIMIZATION_MODE] = mode.id } }
     }
 
+    fun setHoneycombEdgeScrollEnabled(enabled: Boolean) {
+        _honeycombEdgeScrollEnabled.value = enabled
+        persist { store.edit { it[KEY_HONEYCOMB_EDGE_SCROLL_ENABLED] = enabled } }
+    }
+
+    fun setHoneycombEdgeScrollWidth(value: Int) {
+        _honeycombEdgeScrollWidth.value = value.coerceIn(6, 20)
+        val savedValue = _honeycombEdgeScrollWidth.value
+        persistDebounced("key_honeycomb_edge_scroll_width") { store.edit { it[KEY_HONEYCOMB_EDGE_SCROLL_WIDTH] = savedValue } }
+    }
+
+    fun setHoneycombEdgeScrollMultiplier(value: Float) {
+        val tenths = (value.coerceIn(1.0f, 10.0f) * 10f).roundToInt()
+        _honeycombEdgeScrollMultiplier.value = tenths / 10f
+        persistDebounced("key_honeycomb_edge_scroll_multiplier_tenths") {
+            store.edit { it[KEY_HONEYCOMB_EDGE_SCROLL_MULTIPLIER_TENTHS] = tenths }
+        }
+    }
+
     fun setAppListFisheyeEnabled(enabled: Boolean) {
         _appListFisheyeEnabled.value = enabled
         persist { store.edit { it[KEY_APP_LIST_FISHEYE] = enabled } }
@@ -2514,6 +2556,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _honeycombBottomFade.value = 30
         _honeycombFastScrollOptimization.value = true
         _honeycombFastScrollOptimizationMode.value = HoneycombFastScrollOptimizationMode.Standard
+        _honeycombEdgeScrollEnabled.value = true
+        _honeycombEdgeScrollWidth.value = 10
+        _honeycombEdgeScrollMultiplier.value = 3.0f
         _appListFisheyeEnabled.value = true
         _materialHoneycombTopFisheyeEnabled.value = true
         _appListFisheyeRangeRows.value = 4
@@ -2618,6 +2663,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 it[KEY_HONEYCOMB_BOTTOM_FADE] = 30
                 it[KEY_HONEYCOMB_FAST_SCROLL_OPTIMIZATION] = true
                 it[KEY_HONEYCOMB_FAST_SCROLL_OPTIMIZATION_MODE] = HoneycombFastScrollOptimizationMode.Standard.id
+                it[KEY_HONEYCOMB_EDGE_SCROLL_ENABLED] = true
+                it[KEY_HONEYCOMB_EDGE_SCROLL_WIDTH] = 10
+                it[KEY_HONEYCOMB_EDGE_SCROLL_MULTIPLIER_TENTHS] = 30
                 it[KEY_APP_LIST_FISHEYE] = true
                 it[KEY_MATERIAL_HONEYCOMB_TOP_FISHEYE] = true
                 it[KEY_APP_LIST_FISHEYE_RANGE_ROWS] = 4

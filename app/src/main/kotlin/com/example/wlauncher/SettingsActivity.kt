@@ -310,6 +310,9 @@ private fun SettingsRootScreen(
     val honeycombBottomFade by vm.honeycombBottomFade.collectAsStateWithLifecycle()
     val honeycombFastScrollOptimization by vm.honeycombFastScrollOptimization.collectAsStateWithLifecycle()
     val honeycombFastScrollOptimizationMode by vm.honeycombFastScrollOptimizationMode.collectAsStateWithLifecycle()
+    val honeycombEdgeScrollEnabled by vm.honeycombEdgeScrollEnabled.collectAsStateWithLifecycle()
+    val honeycombEdgeScrollWidth by vm.honeycombEdgeScrollWidth.collectAsStateWithLifecycle()
+    val honeycombEdgeScrollMultiplier by vm.honeycombEdgeScrollMultiplier.collectAsStateWithLifecycle()
     val appListFisheyeEnabled by vm.appListFisheyeEnabled.collectAsStateWithLifecycle()
     val materialHoneycombTopFisheyeEnabled by vm.materialHoneycombTopFisheyeEnabled.collectAsStateWithLifecycle()
     val appListFisheyeRangeRows by vm.appListFisheyeRangeRows.collectAsStateWithLifecycle()
@@ -1394,6 +1397,44 @@ private fun SettingsRootScreen(
                     checked = rotaryHapticsEnabled,
                     onToggle = vm::setRotaryHapticsEnabled,
                     scale = itemFisheye(listState, "rotary_haptics", screenCenterY, screenHeightPx)
+                )
+            }
+            item("honeycomb_edge_scroll_enabled") {
+                SettingsSwitchRow(
+                    title = if (isZh) "边缘快滑" else "Edge Fast Scroll",
+                    subtitle = if (honeycombEdgeScrollEnabled) {
+                        if (isZh) "在右侧边缘滑动可快速滚动蜂窝" else "Swipe on right edge to fast-scroll the honeycomb"
+                    } else {
+                        if (isZh) "关闭后右侧边缘无特殊功能" else "Right edge has no special behavior"
+                    },
+                    checked = honeycombEdgeScrollEnabled,
+                    onToggle = vm::setHoneycombEdgeScrollEnabled,
+                    scale = itemFisheye(listState, "honeycomb_edge_scroll_enabled", screenCenterY, screenHeightPx)
+                )
+            }
+            item("honeycomb_edge_scroll_width") {
+                SettingsSliderRow(
+                    title = if (isZh) "边缘快滑区域宽度" else "Edge Zone Width",
+                    value = honeycombEdgeScrollWidth.toFloat(),
+                    valueText = "$honeycombEdgeScrollWidth dp",
+                    range = 6f..20f,
+                    steps = 13,
+                    onValueChange = { vm.setHoneycombEdgeScrollWidth(it.roundToInt()) },
+                    enabled = honeycombEdgeScrollEnabled,
+                    scale = itemFisheye(listState, "honeycomb_edge_scroll_width", screenCenterY, screenHeightPx)
+                )
+            }
+            item("honeycomb_edge_scroll_multiplier") {
+                SettingsSliderRow(
+                    title = if (isZh) "边缘快滑倍率" else "Edge Scroll Speed",
+                    value = honeycombEdgeScrollMultiplier,
+                    valueText = "%.1fx".format(java.util.Locale.US, honeycombEdgeScrollMultiplier),
+                    localValueText = { "%.1fx".format(java.util.Locale.US, it) },
+                    range = 1.0f..10.0f,
+                    steps = 17,
+                    onValueChange = { vm.setHoneycombEdgeScrollMultiplier(it) },
+                    enabled = honeycombEdgeScrollEnabled,
+                    scale = itemFisheye(listState, "honeycomb_edge_scroll_multiplier", screenCenterY, screenHeightPx)
                 )
             }
         }

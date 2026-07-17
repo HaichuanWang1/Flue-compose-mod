@@ -13,14 +13,17 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -146,6 +149,9 @@ fun HoneycombScreen(
     onRenameFolder: (AppInfo, String) -> Unit = { _, _ -> },
     onDissolveFolder: (AppInfo) -> Unit = {},
     onScrollToTop: () -> Unit = {},
+    edgeScrollEnabled: Boolean = true,
+    edgeScrollZoneWidthDp: Int = 10,
+    edgeScrollMultiplier: Float = 3.0f,
     modifier: Modifier = Modifier
 ) {
     if (uiStyle == UiStyle.MATERIAL_3) {
@@ -280,6 +286,7 @@ fun HoneycombScreen(
         val honeycombAutoScrollEdgePx = with(density) { HONEYCOMB_AUTO_SCROLL_EDGE_DP.dp.toPx() }
         val fastDragThresholdPx = with(density) { 10.dp.toPx() }
         val horizontalBackThresholdPx = screenWidthPx * 0.28f
+        val edgeScrollZoneWidthPx = with(density) { edgeScrollZoneWidthDp.dp.toPx() }
         fun currentScrollOffsetValue(): Float = resolveHoneycombScrollOffset(
             directScrollOffset = directScrollOffset,
             animatedScrollOffset = scrollOffset.value
@@ -669,6 +676,7 @@ fun HoneycombScreen(
                         detectDragGestures(
                             onDragStart = { startOffset ->
                                 if (dragFromIndex != null || longPressedApp != null) return@detectDragGestures
+                                if (edgeScrollEnabled && startOffset.x > screenWidthPx - edgeScrollZoneWidthPx) return@detectDragGestures
                                 scrollCancelled.set(true)
                                 swipeBackTotalDx = 0f
                                 dragScrollActive = true
@@ -1154,6 +1162,81 @@ fun HoneycombScreen(
                         scaleY = scale
                         alpha = if (effectiveFisheyeEnabled) scale.coerceIn(0.24f, 1f) else 1f
                         shape = CircleShape
+                    }
+            )
+        }
+
+        if (edgeScrollEnabled && edgeScrollZoneWidthDp > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(edgeScrollZoneWidthDp.dp)
+                    .zIndex(10f)
+                    .pointerInput(minScroll, maxScroll, edgeScrollMultiplier, dragFromIndex, longPressedApp, dragScrollActive) {
+                        val velocityTracker = VelocityTracker()
+                        detectVerticalDragGestures(
+                            onDragStart = {
+                                if (dragFromIndex != null || longPressedApp != null || dragScrollActive) return@detectVerticalDragGestures
+                                wheelMomentumJob?.cancel()
+                                scope.launch { scrollOffset.stop() }
+                                directScrollOffset = currentScrollOffsetValue()
+                                velocityTracker.resetTracking()
+                            },
+                            onVerticalDrag = { change, dragAmount ->
+                                if (dragFromIndex != null || longPressedApp != null) return@detectVerticalDragGestures
+                                change.consume()
+                                velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                markFastScrollActive(260L)
+                                val effectiveDelta = dragAmount * edgeScrollMultiplier
+                                val current = currentScrollOffsetValue()
+                                val next = current + effectiveDelta
+                                val overscroll = when {
+                                    next > maxScroll -> next - maxScroll
+                                    next < minScroll -> next - minScroll
+                                    else -> 0f
+                                }
+                                val dampedDrag = if (overscroll != 0f) effectiveDelta * 0.28f else effectiveDelta
+                                directScrollOffset = current + dampedDrag
+                            },
+                            onDragEnd = {
+                                val velocity = velocityTracker.calculateVelocity().y * edgeScrollMultiplier
+                                val current = currentScrollOffsetValue()
+                                directScrollOffset = current
+                                scope.launch {
+                                    try {
+                                        scrollOffset.snapTo(current)
+                                        directScrollOffset = Float.NaN
+                                        val clamped = current.coerceIn(minScroll, maxScroll)
+                                        if (current != clamped) {
+                                            scrollOffset.animateTo(clamped, spring(dampingRatio = 0.64f, stiffness = 360f))
+                                        } else if (abs(velocity) > 0.5f) {
+                                            scrollOffset.animateDecay(velocity, exponentialDecay()) {
+                                                if (value < minScroll || value > maxScroll) {
+                                                    scope.launch {
+                                                        scrollOffset.animateTo(
+                                                            value.coerceIn(minScroll, maxScroll),
+                                                            spring(dampingRatio = 0.64f, stiffness = 360f)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } finally {
+                                        dragScrollActive = false
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                val current = currentScrollOffsetValue()
+                                directScrollOffset = current
+                                scope.launch {
+                                    scrollOffset.snapTo(current)
+                                    directScrollOffset = Float.NaN
+                                    dragScrollActive = false
+                                }
+                            }
+                        )
                     }
             )
         }

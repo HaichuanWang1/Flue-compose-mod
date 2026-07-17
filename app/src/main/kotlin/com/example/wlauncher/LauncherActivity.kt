@@ -230,6 +230,9 @@ fun LauncherScreen(vm: LauncherViewModel) {
     val honeycombBottomFade by vm.honeycombBottomFade.collectAsStateWithLifecycle()
     val honeycombFastScrollOptimization by vm.honeycombFastScrollOptimization.collectAsStateWithLifecycle()
     val honeycombFastScrollOptimizationMode by vm.honeycombFastScrollOptimizationMode.collectAsStateWithLifecycle()
+    val honeycombEdgeScrollEnabled by vm.honeycombEdgeScrollEnabled.collectAsStateWithLifecycle()
+    val honeycombEdgeScrollWidth by vm.honeycombEdgeScrollWidth.collectAsStateWithLifecycle()
+    val honeycombEdgeScrollMultiplier by vm.honeycombEdgeScrollMultiplier.collectAsStateWithLifecycle()
     val appListFisheyeEnabled by vm.appListFisheyeEnabled.collectAsStateWithLifecycle()
     val materialHoneycombTopFisheyeEnabled by vm.materialHoneycombTopFisheyeEnabled.collectAsStateWithLifecycle()
     val appListLeftSafeInsetPercent by vm.appListLeftSafeInsetPercent.collectAsStateWithLifecycle()
@@ -967,7 +970,10 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         onRemoveShortcut = vm::removeAppListShortcut,
                         onRenameFolder = vm::renameFolder,
                         onDissolveFolder = vm::dissolveFolder,
-                        onScrollToTop = { vm.setState(ScreenState.Face) }
+                        onScrollToTop = { vm.setState(ScreenState.Face) },
+                        edgeScrollEnabled = honeycombEdgeScrollEnabled,
+                        edgeScrollZoneWidthDp = honeycombEdgeScrollWidth,
+                        edgeScrollMultiplier = honeycombEdgeScrollMultiplier
                     )
                     LayoutMode.List -> ListDrawerScreen(
                         apps = apps,
