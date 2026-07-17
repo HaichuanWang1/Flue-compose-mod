@@ -258,7 +258,6 @@ fun HoneycombScreen(
         val appIndexByKey = remember(apps) {
             apps.mapIndexed { index, app -> app.componentKey to index }.toMap()
         }
-        val appLaunchCenters = remember { mutableMapOf<String, Offset>() }
 
         val minGridY = positions.minOfOrNull { it.y } ?: 0f
         val maxGridY = positions.maxOfOrNull { it.y } ?: 0f
@@ -270,12 +269,6 @@ fun HoneycombScreen(
         val overlayBlurActive = (longPressedApp != null || folderOpen) && blurEnabled && !suppressHeavyEffects
         val honeycombAutoScrollEdgePx = with(density) { HONEYCOMB_AUTO_SCROLL_EDGE_DP.dp.toPx() }
         val fastDragThresholdPx = with(density) { 10.dp.toPx() }
-        LaunchedEffect(apps) {
-            val validKeys = apps.mapTo(mutableSetOf()) { it.componentKey }
-            appLaunchCenters.keys
-                .filterNot { it in validKeys }
-                .forEach { appLaunchCenters.remove(it) }
-        }
         fun currentScrollOffsetValue(): Float = resolveHoneycombScrollOffset(
             directScrollOffset = directScrollOffset,
             animatedScrollOffset = scrollOffset.value
@@ -1031,9 +1024,6 @@ fun HoneycombScreen(
                                 }
                                 alpha = itemAlpha * entryVisuals.iconProgress
                                 shape = CircleShape
-                            }
-                            .onGloballyPositioned { coords ->
-                                appLaunchCenters[appKey] = coords.boundsInRoot().center
                             }
 
                     )
