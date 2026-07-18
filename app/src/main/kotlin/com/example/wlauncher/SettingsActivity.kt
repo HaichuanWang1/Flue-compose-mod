@@ -213,10 +213,7 @@ private enum class BlockingProgressCompletionAction {
     WatchFaceArchiveImport
 }
 
-private enum class WatchFaceArchiveImportMode {
-    WATCH,
-    LEGACY
-}
+
 
 class SettingsActivity : ComponentActivity() {
     private var launchRequestId = 0L
@@ -403,7 +400,7 @@ private fun SettingsRootScreen(
     var backupImportOptions by remember { mutableStateOf(FlueBackupOptions()) }
     var backupBusy by remember { mutableStateOf(false) }
     var backupProgress by remember { mutableStateOf<BlockingProgressState?>(null) }
-    var watchFaceArchiveImportMode by remember { mutableStateOf(WatchFaceArchiveImportMode.WATCH) }
+
     val dingDingCatBackupAvailability = remember {
         FlueBackupOptions(dingDingCatWatchFaces = false)
     }
@@ -436,10 +433,7 @@ private fun SettingsRootScreen(
                 backupBusy = true
                 backupProgress = BlockingProgressState(
                     title = "导入表盘",
-                    detail = when (watchFaceArchiveImportMode) {
-                        WatchFaceArchiveImportMode.WATCH -> "正在导入 jb_watch 表盘"
-                        WatchFaceArchiveImportMode.LEGACY -> "公开版已移除旧版表盘导入"
-                    }
+                    detail = "公开版已移除表盘导入"
                 )
                 val result = vm.importWatchFaceArchive(uri = uri)
                 result
@@ -572,10 +566,7 @@ private fun SettingsRootScreen(
             title = { Text("删除表盘") },
             text = {
                 Text(
-                    when {
-                        target.isJbWatch -> "删除 ${target.displayName}？这个 .watch 表盘会从 Flue 私有目录移除。"
-                        else -> "删除 ${target.displayName}？这个旧版导入表盘会从 Flue 私有目录移除。"
-                    }
+                    "删除 ${target.displayName}？这个旧版导入表盘会从 Flue 私有目录移除。"
                 )
             },
             confirmButton = {
@@ -970,7 +961,7 @@ private fun SettingsRootScreen(
                     } else {
                         null
                     },
-                    onDelete = if (descriptor.isDingDingCat || descriptor.isJbWatch) {
+                    onDelete = if (descriptor.isDingDingCat) {
                         { dingDingCatDeleteTarget = descriptor }
                     } else {
                         null
@@ -990,21 +981,10 @@ private fun SettingsRootScreen(
             item("watchface_import_archive") {
                 ActionCard(
                     title = "导入表盘",
-                    subtitle = "导入jb_watch表盘",
+                    subtitle = "公开版已移除表盘导入",
                     scale = itemFisheye(listState, "watchface_import_archive", screenCenterY, screenHeightPx),
                     icon = { Icon(Icons.Filled.Add, contentDescription = null, tint = WatchColors.ActiveCyan) },
-                    onClick = {
-                        watchFaceArchiveImportMode = WatchFaceArchiveImportMode.WATCH
-                        dingDingCatZipPicker.launch(
-                            arrayOf(
-                                "application/zip",
-                                "application/x-zip-compressed",
-                                "application/octet-stream",
-                                "application/*",
-                                "*/*"
-                            )
-                        )
-                    },
+                    onClick = {},
                     onLongPress = {},
                     longPressDurationMs = 2_000L
                 )
@@ -1027,15 +1007,6 @@ private fun SettingsRootScreen(
             initialFirstVisibleItemScrollOffset = scrollFor(SettingsDestination.WATCH_FACE_MORE).offset,
             onScrollChanged = { index, offset -> updateScroll(SettingsDestination.WATCH_FACE_MORE, index, offset) }
         ) { listState, screenCenterY, screenHeightPx, _ ->
-            if (selectedWatchFace.isJbWatch) {
-                item("jbwatch_info") {
-                    MessageCard(
-                        text = ".watch 表盘已识别为 watch.xml / watch.pxml 结构，当前走开放 watch 标准兼容链。",
-                        background = Color(0x33007AFF),
-                        onClick = {}
-                    )
-                }
-            }
             if (selectedWatchFace.isBuiltin) {
                 item("watchface_font") {
                     ActionCard(

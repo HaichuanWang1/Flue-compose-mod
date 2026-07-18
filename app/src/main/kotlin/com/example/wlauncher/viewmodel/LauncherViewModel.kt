@@ -51,8 +51,6 @@ import com.flue.launcher.watchface.WatchFacePhotoCache
 import com.flue.launcher.watchface.LunchWatchFaceDescriptor
 import com.flue.launcher.watchface.LunchWatchFaceRegistry
 import com.flue.launcher.watchface.LunchWatchFaceScanner
-import com.flue.launcher.watchface.jbwatch.JBWATCH_ID_PREFIX
-import com.flue.launcher.watchface.jbwatch.JbWatchFaceStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1983,16 +1981,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    suspend fun importJbWatchFace(uri: Uri): Result<LunchWatchFaceDescriptor> {
-        return runCatching {
-            watchFaceRefreshJob?.cancel()
-            val descriptor = withContext(Dispatchers.IO) {
-                JbWatchFaceStorage.importArchive(getApplication(), uri)
-            }
-            finishImportedWatchFaceImport(descriptor)
-        }
-    }
-
     suspend fun importDingDingCatWatchFace(uri: Uri): Result<LunchWatchFaceDescriptor> {
         return Result.failure(UnsupportedOperationException("公开版已移除旧版叮叮猫表盘导入"))
     }
@@ -2001,18 +1989,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         uri: Uri,
         allowDingDingCat: Boolean = false
     ): Result<LunchWatchFaceDescriptor> {
-        return runCatching {
-            watchFaceRefreshJob?.cancel()
-            val descriptor = withContext(Dispatchers.IO) {
-                withTemporaryWatchFaceArchive(uri) { archive ->
-                    when (sniffWatchFaceArchive(archive)) {
-                        WatchFaceArchiveKind.JbWatch -> JbWatchFaceStorage.importArchiveFile(getApplication(), archive)
-                        WatchFaceArchiveKind.Unknown -> error("无法识别 jb_watch/.watch 表盘包：需要 watch.xml/watch.pxml")
-                    }
-                }
-            }
-            finishImportedWatchFaceImport(descriptor)
-        }
+        return Result.failure(UnsupportedOperationException("公开版已移除表盘导入"))
     }
 
     private suspend fun finishImportedWatchFaceImport(descriptor: LunchWatchFaceDescriptor): LunchWatchFaceDescriptor {
@@ -2078,27 +2055,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     suspend fun deleteImportedWatchFace(id: String): Result<Unit> {
         return runCatching {
-            val descriptor = _availableWatchFaces.value.firstOrNull {
-                it.id == id && it.isJbWatch
-            } ?: error("表盘不存在")
-            val deleted = withContext(Dispatchers.IO) {
-                if (descriptor.isJbWatch) JbWatchFaceStorage.delete(getApplication(), descriptor) else false
-            }
-            if (!deleted) error("删除失败")
-            val scanned = withContext(Dispatchers.IO) { scanAllWatchFaces() }
-            publishWatchFaces(scanned)
-            if (_selectedWatchFaceId.value == id) {
-                _selectedWatchFaceId.value = BUILT_IN_WATCHFACE_ID
-                _watchFaceLastError.value = null
-                persist {
-                    store.edit {
-                        it[KEY_SELECTED_WATCHFACE_ID] = BUILT_IN_WATCHFACE_ID
-                        it.remove(KEY_LAST_WATCHFACE_ERROR)
-                    }
-                }
-            }
-            syncSelectedWatchFace(freshScanCompleted = true)
-            _watchFaceRefreshToken.value = _watchFaceRefreshToken.value + 1
+            error("公开版已移除导入表盘删除")
         }
     }
 
@@ -2131,8 +2088,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private fun scanAllWatchFaces(): List<LunchWatchFaceDescriptor> {
         val context = getApplication<Application>()
         return LunchWatchFaceScanner.builtInDescriptors() +
-            LunchWatchFaceScanner.scanInstalled(context) +
-            JbWatchFaceStorage.scan(context)
+            LunchWatchFaceScanner.scanInstalled(context)
     }
 
     private fun publishWatchFaces(watchFaces: List<LunchWatchFaceDescriptor>) {
@@ -2801,11 +2757,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 _selectedWatchFace.value = match
                 LunchWatchFaceRegistry.setCurrentSelectedId(match.id)
             }
-            isImportedArchiveId(requestedId) &&
-                _selectedWatchFace.value.id == requestedId &&
-                _selectedWatchFace.value.isJbWatch -> {
-                LunchWatchFaceRegistry.setCurrentSelectedId(requestedId)
-            }
             isImportedArchiveId(requestedId) && !freshScanCompleted -> {
                 selectionResolved = false
                 LunchWatchFaceRegistry.setCurrentSelectedId(requestedId)
@@ -2836,38 +2787,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun isImportedArchiveId(id: String): Boolean {
-        return id.startsWith(JBWATCH_ID_PREFIX)
-    }
-
-    private enum class WatchFaceArchiveKind {
-        JbWatch,
-        Unknown
-    }
-
-    private inline fun <T> withTemporaryWatchFaceArchive(uri: Uri, block: (File) -> T): T {
-        val context = getApplication<Application>()
-        val tempZip = File.createTempFile("watchface_import_", ".zip", context.cacheDir)
-        return try {
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                tempZip.outputStream().use { output -> input.copyTo(output) }
-            } ?: error("无法读取表盘包")
-            block(tempZip)
-        } finally {
-            tempZip.delete()
-        }
-    }
-
-    private fun sniffWatchFaceArchive(archive: File): WatchFaceArchiveKind {
-        return ZipFile(archive).use { zip ->
-            val names = zip.entries().asSequence()
-                .filterNot { it.isDirectory }
-                .map { it.name.replace('\\', '/').substringAfterLast('/') }
-                .toSet()
-            when {
-                "watch.xml" in names && "watch.pxml" in names -> WatchFaceArchiveKind.JbWatch
-                else -> WatchFaceArchiveKind.Unknown
-            }
-        }
+        return false
     }
 
     private fun refreshIcons() {

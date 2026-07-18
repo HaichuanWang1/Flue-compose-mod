@@ -92,7 +92,6 @@ import com.flue.launcher.viewmodel.LauncherViewModel
 import com.flue.launcher.watchface.BUILT_IN_WATCHFACE_ID
 import com.flue.launcher.watchface.BuiltInWatchFaceOptions
 import com.flue.launcher.watchface.LunchWatchFaceHost
-import com.flue.launcher.watchface.jbwatch.JbWatchFaceHost
 import androidx.compose.animation.core.Spring
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -795,12 +794,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
                     targetState = if (
                         watchFaceSelectionReady ||
                         selectedWatchFace.isBuiltin ||
-                        selectedWatchFaceId == BUILT_IN_WATCHFACE_ID ||
-                        (
-                            selectedWatchFace.id == selectedWatchFaceId &&
-                                selectedWatchFace.isJbWatch &&
-                                !selectedWatchFace.sourceDirPath.isNullOrBlank()
-                            )
+                        selectedWatchFaceId == BUILT_IN_WATCHFACE_ID
                     ) {
                         selectedWatchFace.stableKey
                     } else {
@@ -843,39 +837,6 @@ fun LauncherScreen(vm: LauncherViewModel) {
                                 !sideSceneOverlayActive
                             ) lockScreenWithAccessibility else null
                         )
-                    } else if (selectedWatchFace.isJbWatch) {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            JbWatchFaceHost(
-                                descriptor = selectedWatchFace,
-                                isFaceVisible = launcherInteractive && screenState == ScreenState.Face,
-                                refreshToken = watchFaceRefreshToken,
-                                onLongPress = null, // 表盘选择已移至控制中心电池图标
-                                onDoubleTap = if (
-                                    doubleTapLockScreenEnabled &&
-                                    launcherInteractive &&
-                                    screenState == ScreenState.Face &&
-                                    !sideSceneOverlayActive
-                                ) lockScreenWithAccessibility else null,
-                                onLoadFailure = { descriptor, error ->
-                                    val rootCause = generateSequence(error) { it.cause }.last()
-                                    vm.fallbackToBuiltIn("${descriptor.displayName}: ${rootCause.message ?: rootCause.javaClass.simpleName}")
-                                }
-                            )
-                            if (watchFaceBottomFadeEnabled) {
-                                WatchFaceBottomFadeOverlay(
-                                    color = watchFaceFadePalette.fadeEdge,
-                                    heightDp = honeycombBottomFade,
-                                    blurRadiusDp = if (blurEnabled && edgeBlurEnabled) honeycombEdgeBlurRadius else 0f
-                                )
-                            }
-                            WatchFaceStatusIndicatorOverlay(
-                                showStatusIndicators = watchFaceStatusIndicators,
-                                hasNotifications = showNotification && notificationGroups.isNotEmpty(),
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(top = 18.dp)
-                            )
-                        }
                     } else {
                         Box(modifier = Modifier.fillMaxSize()) {
                             LunchWatchFaceHost(

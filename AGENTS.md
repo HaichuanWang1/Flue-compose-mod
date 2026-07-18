@@ -6,11 +6,17 @@ Android Wear launcher (Jetpack Compose), single module `:app`. Package: `com.flu
 
 ## Build (Gradle 9.4.1 wrapper)
 
-Always use `.\gradlew.bat assembleRelease` (R8 + minification) unless specifically asked for debug.
+### Install testing — ALWAYS use release build
+
+All install testing must use the release APK (`assembleRelease` with R8 + minification). **Never use `installDebug`** — the debug signature conflicts with the release install on device.
 
 ```powershell
+# Build release APK
 .\gradlew.bat assembleRelease --no-daemon --console=plain
-.\gradlew.bat installDebug
+
+# Install release APK (uninstall first if signed differently)
+adb uninstall com.flue.launcher.mod 2>$null
+adb install app\build\outputs\apk\release\app-release.apk
 ```
 
 JDK 17 locally / JDK 21 in CI. Kotlin 2.3.21, AGP 9.2.1, Compose BOM 2026.04.01.
@@ -27,6 +33,8 @@ Never push unless explicitly told to.
 
 Release needs `keystore.properties` (in `app/`) or env vars `FLUE_SIGNING_*`. There's a debug keystore (`app/keystore.jks`) for local debug builds; add `keystore.properties` pointing to it to use release signing.
 
+**Important:** `assembleRelease` is the only way to install test — see Build section above.
+
 ## Sensitive content (DO NOT PUBLISH)
 
 The `.gitignore` already excludes these — never `git add -f` or commit them:
@@ -42,8 +50,8 @@ When adding new files, check they don't contain: ADB serials, file system paths 
 | Root | Content |
 |---|---|
 | `app/src/main/kotlin/com/example/wlauncher/` | **Main app**: LauncherActivity, SettingsActivity, ViewModel, UI screens |
-| `app/src/main/java/com/flue/launcher/watchface/` | Native watchface support (LunchWatchFace*, JbWatchFace*) |
-| `app/src/main/java/com/dudu/wearlauncher/` | Legacy jb_watch plugin — Java, external code, modify carefully |
+| `app/src/main/java/com/flue/launcher/watchface/` | Native watchface support (LunchWatchFace*) |
+| `app/src/main/java/com/dudu/wearlauncher/` | Legacy plugin — Java, external code, modify carefully |
 
 ## Key files
 
