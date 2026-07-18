@@ -130,6 +130,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val KEY_HONEYCOMB_EDGE_SCROLL_ENABLED = booleanPreferencesKey("honeycomb_edge_scroll_enabled")
         val KEY_HONEYCOMB_EDGE_SCROLL_WIDTH = intPreferencesKey("honeycomb_edge_scroll_width")
         val KEY_HONEYCOMB_EDGE_SCROLL_MULTIPLIER_TENTHS = intPreferencesKey("honeycomb_edge_scroll_multiplier_tenths")
+        val KEY_HONEYCOMB_EDGE_SCROLL_REVERSE = booleanPreferencesKey("honeycomb_edge_scroll_reverse")
         val KEY_ROTARY_HAPTICS_ENABLED = booleanPreferencesKey("rotary_haptics_enabled")
         val KEY_NOTIFICATION_SETTING_MIGRATED = booleanPreferencesKey("notification_setting_migrated")
         val KEY_GESTURE_SWAP_WIDGET_APPS = booleanPreferencesKey("gesture_swap_widget_apps")
@@ -379,6 +380,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val honeycombEdgeScrollWidth: StateFlow<Int> = _honeycombEdgeScrollWidth.asStateFlow()
     private val _honeycombEdgeScrollMultiplier = MutableStateFlow(3.0f)
     val honeycombEdgeScrollMultiplier: StateFlow<Float> = _honeycombEdgeScrollMultiplier.asStateFlow()
+    private val _honeycombEdgeScrollReversed = MutableStateFlow(false)
+    val honeycombEdgeScrollReversed: StateFlow<Boolean> = _honeycombEdgeScrollReversed.asStateFlow()
     private val _appListFisheyeEnabled = MutableStateFlow(true)
     val appListFisheyeEnabled: StateFlow<Boolean> = _appListFisheyeEnabled.asStateFlow()
     private val _materialHoneycombTopFisheyeEnabled = MutableStateFlow(true)
@@ -809,6 +812,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val loadedMultiplier = loadedMultiplierTenths / 10f
                 if (_honeycombEdgeScrollMultiplier.value != loadedMultiplier) {
                     _honeycombEdgeScrollMultiplier.value = loadedMultiplier
+                }
+
+                val loadedEdgeScrollReversed = prefs[KEY_HONEYCOMB_EDGE_SCROLL_REVERSE] ?: false
+                if (_honeycombEdgeScrollReversed.value != loadedEdgeScrollReversed) {
+                    _honeycombEdgeScrollReversed.value = loadedEdgeScrollReversed
                 }
 
                 val loadedFisheyeEnabled = prefs[KEY_APP_LIST_FISHEYE] ?: true
@@ -1695,6 +1703,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         persistDebounced("key_honeycomb_edge_scroll_multiplier_tenths") {
             store.edit { it[KEY_HONEYCOMB_EDGE_SCROLL_MULTIPLIER_TENTHS] = tenths }
         }
+    }
+
+    fun setHoneycombEdgeScrollReversed(reversed: Boolean) {
+        _honeycombEdgeScrollReversed.value = reversed
+        persist { store.edit { it[KEY_HONEYCOMB_EDGE_SCROLL_REVERSE] = reversed } }
     }
 
     fun setAppListFisheyeEnabled(enabled: Boolean) {

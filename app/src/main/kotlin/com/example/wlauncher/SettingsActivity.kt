@@ -313,6 +313,7 @@ private fun SettingsRootScreen(
     val honeycombEdgeScrollEnabled by vm.honeycombEdgeScrollEnabled.collectAsStateWithLifecycle()
     val honeycombEdgeScrollWidth by vm.honeycombEdgeScrollWidth.collectAsStateWithLifecycle()
     val honeycombEdgeScrollMultiplier by vm.honeycombEdgeScrollMultiplier.collectAsStateWithLifecycle()
+    val honeycombEdgeScrollReversed by vm.honeycombEdgeScrollReversed.collectAsStateWithLifecycle()
     val appListFisheyeEnabled by vm.appListFisheyeEnabled.collectAsStateWithLifecycle()
     val materialHoneycombTopFisheyeEnabled by vm.materialHoneycombTopFisheyeEnabled.collectAsStateWithLifecycle()
     val appListFisheyeRangeRows by vm.appListFisheyeRangeRows.collectAsStateWithLifecycle()
@@ -1435,6 +1436,20 @@ private fun SettingsRootScreen(
                     onValueChange = { vm.setHoneycombEdgeScrollMultiplier(it) },
                     enabled = honeycombEdgeScrollEnabled,
                     scale = itemFisheye(listState, "honeycomb_edge_scroll_multiplier", screenCenterY, screenHeightPx)
+                )
+            }
+            item("honeycomb_edge_scroll_reverse") {
+                SettingsSwitchRow(
+                    title = if (isZh) "反向滑动" else "Reverse Direction",
+                    subtitle = if (honeycombEdgeScrollReversed) {
+                        if (isZh) "右侧滑块上滑→列表向下，下滑→列表向上" else "Edge slider up → list scrolls down, slider down → list scrolls up"
+                    } else {
+                        if (isZh) "右侧滑块上滑→列表向上，下滑→列表向下" else "Edge slider up → list scrolls up, slider down → list scrolls down"
+                    },
+                    checked = honeycombEdgeScrollReversed,
+                    enabled = honeycombEdgeScrollEnabled,
+                    onToggle = vm::setHoneycombEdgeScrollReversed,
+                    scale = itemFisheye(listState, "honeycomb_edge_scroll_reverse", screenCenterY, screenHeightPx)
                 )
             }
         }

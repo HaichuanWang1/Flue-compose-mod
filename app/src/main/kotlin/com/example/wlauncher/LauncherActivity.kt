@@ -233,6 +233,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
     val honeycombEdgeScrollEnabled by vm.honeycombEdgeScrollEnabled.collectAsStateWithLifecycle()
     val honeycombEdgeScrollWidth by vm.honeycombEdgeScrollWidth.collectAsStateWithLifecycle()
     val honeycombEdgeScrollMultiplier by vm.honeycombEdgeScrollMultiplier.collectAsStateWithLifecycle()
+    val honeycombEdgeScrollReversed by vm.honeycombEdgeScrollReversed.collectAsStateWithLifecycle()
     val appListFisheyeEnabled by vm.appListFisheyeEnabled.collectAsStateWithLifecycle()
     val materialHoneycombTopFisheyeEnabled by vm.materialHoneycombTopFisheyeEnabled.collectAsStateWithLifecycle()
     val appListLeftSafeInsetPercent by vm.appListLeftSafeInsetPercent.collectAsStateWithLifecycle()
@@ -973,7 +974,8 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         onScrollToTop = { vm.setState(ScreenState.Face) },
                         edgeScrollEnabled = honeycombEdgeScrollEnabled,
                         edgeScrollZoneWidthDp = honeycombEdgeScrollWidth,
-                        edgeScrollMultiplier = honeycombEdgeScrollMultiplier
+                        edgeScrollMultiplier = honeycombEdgeScrollMultiplier,
+                        edgeScrollReversed = honeycombEdgeScrollReversed
                     )
                     LayoutMode.List -> ListDrawerScreen(
                         apps = apps,

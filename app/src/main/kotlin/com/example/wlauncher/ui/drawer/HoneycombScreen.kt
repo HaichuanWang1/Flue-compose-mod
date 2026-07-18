@@ -152,6 +152,7 @@ fun HoneycombScreen(
     edgeScrollEnabled: Boolean = true,
     edgeScrollZoneWidthDp: Int = 10,
     edgeScrollMultiplier: Float = 3.0f,
+    edgeScrollReversed: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     if (uiStyle == UiStyle.MATERIAL_3) {
@@ -1173,7 +1174,7 @@ fun HoneycombScreen(
                     .fillMaxHeight()
                     .width(edgeScrollZoneWidthDp.dp)
                     .zIndex(10f)
-                    .pointerInput(minScroll, maxScroll, edgeScrollMultiplier, dragFromIndex, longPressedApp, dragScrollActive) {
+                    .pointerInput(minScroll, maxScroll, edgeScrollMultiplier, edgeScrollReversed, dragFromIndex, longPressedApp, dragScrollActive) {
                         val velocityTracker = VelocityTracker()
                         detectVerticalDragGestures(
                             onDragStart = {
@@ -1188,7 +1189,7 @@ fun HoneycombScreen(
                                 change.consume()
                                 velocityTracker.addPosition(change.uptimeMillis, change.position)
                                 markFastScrollActive(260L)
-                                val effectiveDelta = dragAmount * edgeScrollMultiplier
+                                val effectiveDelta = dragAmount * edgeScrollMultiplier * (if (edgeScrollReversed) -1f else 1f)
                                 val current = currentScrollOffsetValue()
                                 val next = current + effectiveDelta
                                 val overscroll = when {
@@ -1200,7 +1201,8 @@ fun HoneycombScreen(
                                 directScrollOffset = current + dampedDrag
                             },
                             onDragEnd = {
-                                val velocity = velocityTracker.calculateVelocity().y * edgeScrollMultiplier
+                                val sign = if (edgeScrollReversed) -1f else 1f
+                                val velocity = velocityTracker.calculateVelocity().y * edgeScrollMultiplier * sign
                                 val current = currentScrollOffsetValue()
                                 directScrollOffset = current
                                 scope.launch {
