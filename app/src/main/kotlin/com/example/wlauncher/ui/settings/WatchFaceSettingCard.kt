@@ -104,7 +104,7 @@ fun WatchFaceSettingCard(
         } else {
             val context = androidx.compose.ui.platform.LocalContext.current
             val previewBitmap by produceState<ImageBitmap?>(initialValue = null, key1 = descriptor.stableKey) {
-                value = withContext(Dispatchers.Default) {
+                value = withContext(Dispatchers.IO) {
                     LunchWatchFaceScanner.loadPreviewDrawable(context, descriptor)
                         ?.toBitmap(120, 120)
                         ?.asImageBitmap()
@@ -121,12 +121,18 @@ fun WatchFaceSettingCard(
                     contentScale = ContentScale.Crop
                 )
             } else {
+                val initial = descriptor.displayName.firstOrNull()?.toString()?.uppercase() ?: ""
                 Box(
                     modifier = Modifier
                         .size(52.dp)
                         .clip(launcherStyle.compactShape)
-                        .background(Color.White.copy(alpha = 0.08f))
-                )
+                        .background(Color.White.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (initial.isNotBlank()) {
+                        Text(initial, fontSize = 20.sp, color = Color.White.copy(alpha = 0.3f))
+                    }
+                }
             }
         }
         Box(
