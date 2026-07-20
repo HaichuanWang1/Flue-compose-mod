@@ -7,6 +7,7 @@ import com.flue.launcher.data.repository.AppRepository
 import com.flue.launcher.data.repository.WidgetRepository
 import com.flue.launcher.ui.theme.ThemeMode
 import com.flue.launcher.ui.theme.UiStyle
+import com.flue.launcher.util.RecentsVisibility
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,6 +19,7 @@ class FlueApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         ILog.configureDiagnostics(this)
+        RecentsVisibility.init(this)
     }
 
     companion object {
