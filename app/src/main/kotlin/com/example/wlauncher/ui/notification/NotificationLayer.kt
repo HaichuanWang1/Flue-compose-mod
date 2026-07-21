@@ -129,6 +129,17 @@ fun NotificationLayer(
     }
     val dismissThresholdPx = dismissDragRangePx * NOTIFICATION_DISMISS_RELEASE_PROGRESS
     val overscroll = remember { androidx.compose.animation.core.Animatable(0f) }
+    var overscrollTarget by remember { mutableFloatStateOf(0f) }
+    var overscrollAnimating by remember { mutableStateOf(false) }
+
+    // Single LaunchedEffect applies overscroll target changes synchronously,
+    // avoiding per-call scope.launch overhead on low-end hardware.
+    LaunchedEffect(overscrollTarget) {
+        if (!overscrollAnimating) {
+            overscroll.snapTo(overscrollTarget)
+        }
+    }
+
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val launcherStyle = LauncherTheme.style
     var bottomOverlayHeightPx by remember { mutableIntStateOf(0) }
@@ -150,14 +161,22 @@ fun NotificationLayer(
                 .coerceIn(NOTIFICATION_BOTTOM_OVERSCROLL_LIMIT, 0f)
             else -> overscroll.value
         }
-        scope.launch { overscroll.snapTo(next) }
+        overscrollTarget = next
         return next
     }
 
     fun releaseOverscroll() {
-        scope.launch {
-            if (overscroll.value != 0f) {
-                overscroll.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 420f))
+        val startValue = overscroll.value
+        if (startValue != 0f) {
+            overscrollAnimating = true
+            overscrollTarget = 0f
+            scope.launch {
+                try {
+                    overscroll.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 420f))
+                } finally {
+                    overscrollAnimating = false
+                    overscrollTarget = 0f
+                }
             }
         }
     }
@@ -168,6 +187,7 @@ fun NotificationLayer(
             dismissDragDistance = 0f
             dismissDragVelocityY = 0f
             lastDismissDragEventUptime = 0L
+            overscrollTarget = 0f
             overscroll.snapTo(0f)
         }
     }
@@ -285,13 +305,9 @@ fun NotificationLayer(
                     return androidx.compose.ui.geometry.Offset(0f, available.y)
                 }
                 if (overscroll.value != 0f && ((overscroll.value > 0f && available.y < 0f) || (overscroll.value < 0f && available.y > 0f))) {
-                    scope.launch {
-                        overscroll.snapTo(
-                            when {
-                                overscroll.value > 0f -> (overscroll.value + available.y).coerceAtLeast(0f)
-                                else -> (overscroll.value + available.y).coerceAtMost(0f)
-                            }
-                        )
+                    overscrollTarget = when {
+                        overscroll.value > 0f -> (overscroll.value + available.y).coerceAtLeast(0f)
+                        else -> (overscroll.value + available.y).coerceAtMost(0f)
                     }
                     return androidx.compose.ui.geometry.Offset(0f, available.y)
                 }

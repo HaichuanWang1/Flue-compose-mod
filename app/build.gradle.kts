@@ -47,8 +47,8 @@ android {
         applicationId = "com.flue.launcher.mod"
         minSdk = 27
         targetSdk = 36
-        versionCode = 15
-        versionName = "beta1.5-mod"
+        versionCode = 16
+        versionName = "beta1.6-mod"
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
     }
 

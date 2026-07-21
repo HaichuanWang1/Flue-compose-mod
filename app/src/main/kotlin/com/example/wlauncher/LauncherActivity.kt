@@ -68,6 +68,7 @@ import com.flue.launcher.ui.drawer.AppFolderOverlay
 import com.flue.launcher.ui.drawer.HoneycombScreen
 import com.flue.launcher.ui.drawer.ListDrawerScreen
 import com.flue.launcher.ui.drawer.appListPalette
+import com.flue.launcher.ui.drawer.AppListPalette
 import com.flue.launcher.ui.drawer.vibrateHaptic
 import com.flue.launcher.ui.home.WatchFaceLayer
 import com.flue.launcher.ui.home.WatchFaceBottomFadeOverlay
@@ -76,6 +77,7 @@ import com.flue.launcher.ui.home.rememberAppListSeedColor
 import com.flue.launcher.ui.navigation.GestureHost
 import com.flue.launcher.ui.navigation.LayoutMode
 import com.flue.launcher.ui.navigation.ScreenState
+import com.flue.launcher.ui.notification.NotificationGroupUi
 import com.flue.launcher.ui.notification.NotificationLayer
 import com.flue.launcher.ui.smartstack.SmartStackLayer
 import com.flue.launcher.ui.smartstack.WidgetPageLayer
@@ -91,6 +93,7 @@ import com.flue.launcher.viewmodel.HoneycombFastScrollOptimizationMode
 import com.flue.launcher.viewmodel.LauncherViewModel
 import com.flue.launcher.watchface.BUILT_IN_WATCHFACE_ID
 import com.flue.launcher.watchface.BuiltInWatchFaceOptions
+import com.flue.launcher.watchface.LunchWatchFaceDescriptor
 import com.flue.launcher.watchface.LunchWatchFaceHost
 import androidx.compose.animation.core.Spring
 import kotlinx.coroutines.delay
@@ -790,88 +793,33 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         origin = Offset(0.5f, 0.5f)
                     )
             ) {
-                AnimatedContent(
-                    targetState = if (
-                        watchFaceSelectionReady ||
-                        selectedWatchFace.isBuiltin ||
-                        selectedWatchFaceId == BUILT_IN_WATCHFACE_ID
-                    ) {
-                        selectedWatchFace.stableKey
-                    } else {
-                        "loading"
-                    },
-                    transitionSpec = {
-                        fadeIn(animationSpec = launcherStyle.faceSwitchEnterSpec) togetherWith
-                            fadeOut(animationSpec = launcherStyle.faceSwitchExitSpec)
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    label = "watchface_switch"
-                ) { targetKey ->
-                    if (targetKey == "loading") {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black)
-                        )
-                    } else if (selectedWatchFace.isBuiltin) {
-                        WatchFaceLayer(
-                            watchFaceId = selectedWatchFace.id,
-                            photoPath = builtInPhotoPath,
-                            videoPath = builtInVideoPath,
-                            isFaceVisible = launcherInteractive && screenState == ScreenState.Face,
-                            uiStyle = uiStyle,
-                            photoOptions = photoWatchOptions,
-                            videoOptions = videoWatchOptions,
-                            showChargingPowerText = watchFaceChargingPowerText,
-                            showStatusIndicators = watchFaceStatusIndicators,
-                            showBottomFade = watchFaceBottomFadeEnabled,
-                            bottomFadeColor = watchFaceFadePalette.fadeEdge,
-                            bottomFadeHeightDp = honeycombBottomFade,
-                            bottomFadeBlurRadiusDp = if (blurEnabled && edgeBlurEnabled) honeycombEdgeBlurRadius else 0f,
-                            hasNotifications = showNotification && notificationGroups.isNotEmpty(),
-                            onLongPress = null, // 表盘选择已移至控制中心电池图标
-                            onDoubleTap = if (
-                                doubleTapLockScreenEnabled &&
-                                launcherInteractive &&
-                                screenState == ScreenState.Face &&
-                                !sideSceneOverlayActive
-                            ) lockScreenWithAccessibility else null
-                        )
-                    } else {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            LunchWatchFaceHost(
-                                descriptor = selectedWatchFace,
-                                isFaceVisible = launcherInteractive && screenState == ScreenState.Face,
-                                refreshToken = watchFaceRefreshToken,
-                                onLongPress = null, // 表盘选择已移至控制中心电池图标
-                                onDoubleTap = if (
-                                    doubleTapLockScreenEnabled &&
-                                    launcherInteractive &&
-                                    screenState == ScreenState.Face &&
-                                    !sideSceneOverlayActive
-                                ) lockScreenWithAccessibility else null,
-                                onLoadFailure = { descriptor, error ->
-                                    val rootCause = generateSequence(error) { it.cause }.last()
-                                    vm.fallbackToBuiltIn("${descriptor.displayName}: ${rootCause.message ?: rootCause.javaClass.simpleName}")
-                                }
-                            )
-                            if (watchFaceBottomFadeEnabled) {
-                                WatchFaceBottomFadeOverlay(
-                                    color = watchFaceFadePalette.fadeEdge,
-                                    heightDp = honeycombBottomFade,
-                                    blurRadiusDp = if (blurEnabled && edgeBlurEnabled) honeycombEdgeBlurRadius else 0f
-                                )
-                            }
-                            WatchFaceStatusIndicatorOverlay(
-                                showStatusIndicators = watchFaceStatusIndicators,
-                                hasNotifications = showNotification && notificationGroups.isNotEmpty(),
-                                modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .padding(top = 18.dp)
-                            )
-                        }
-                    }
-                }
+                LauncherWatchFaceContent(
+                    vm = vm,
+                    screenState = faceAnimState,
+                    launcherInteractive = launcherInteractive,
+                    uiStyle = uiStyle,
+                    selectedWatchFace = selectedWatchFace,
+                    selectedWatchFaceId = selectedWatchFaceId,
+                    watchFaceSelectionReady = watchFaceSelectionReady,
+                    watchFaceRefreshToken = watchFaceRefreshToken,
+                    photoPath = builtInPhotoPath,
+                    videoPath = builtInVideoPath,
+                    photoOptions = photoWatchOptions,
+                    videoOptions = videoWatchOptions,
+                    watchFaceChargingPowerText = watchFaceChargingPowerText,
+                    watchFaceStatusIndicators = watchFaceStatusIndicators,
+                    watchFaceBottomFadeEnabled = watchFaceBottomFadeEnabled,
+                    watchFaceFadePalette = watchFaceFadePalette,
+                    honeycombBottomFade = honeycombBottomFade,
+                    blurEnabled = blurEnabled,
+                    edgeBlurEnabled = edgeBlurEnabled,
+                    honeycombEdgeBlurRadius = honeycombEdgeBlurRadius,
+                    showNotification = showNotification,
+                    notificationGroups = notificationGroups,
+                    doubleTapLockScreenEnabled = doubleTapLockScreenEnabled,
+                    sideSceneOverlayActive = sideSceneOverlayActive,
+                    lockScreenWithAccessibility = lockScreenWithAccessibility
+                )
             }
 
             Box(
@@ -1202,6 +1150,117 @@ fun LauncherScreen(vm: LauncherViewModel) {
                         stackCardColor = notificationStackTint
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LauncherWatchFaceContent(
+    vm: LauncherViewModel,
+    screenState: ScreenState,
+    launcherInteractive: Boolean,
+    uiStyle: UiStyle,
+    selectedWatchFace: LunchWatchFaceDescriptor,
+    selectedWatchFaceId: String,
+    watchFaceSelectionReady: Boolean,
+    watchFaceRefreshToken: Int,
+    photoPath: String?,
+    videoPath: String?,
+    photoOptions: BuiltInWatchFaceOptions,
+    videoOptions: BuiltInWatchFaceOptions,
+    watchFaceChargingPowerText: Boolean,
+    watchFaceStatusIndicators: Boolean,
+    watchFaceBottomFadeEnabled: Boolean,
+    watchFaceFadePalette: AppListPalette,
+    honeycombBottomFade: Int,
+    blurEnabled: Boolean,
+    edgeBlurEnabled: Boolean,
+    honeycombEdgeBlurRadius: Float,
+    showNotification: Boolean,
+    notificationGroups: List<NotificationGroupUi>,
+    doubleTapLockScreenEnabled: Boolean,
+    sideSceneOverlayActive: Boolean,
+    lockScreenWithAccessibility: () -> Unit
+) {
+    val launcherStyle = LauncherTheme.style
+    val watchFaceId = selectedWatchFaceId
+    val watchFace = selectedWatchFace
+    val isFaceVisible = launcherInteractive && screenState == ScreenState.Face
+
+    AnimatedContent(
+        targetState = if (
+            watchFaceSelectionReady ||
+            watchFace.isBuiltin ||
+            watchFaceId == BUILT_IN_WATCHFACE_ID
+        ) {
+            watchFace.stableKey
+        } else {
+            "loading"
+        },
+        transitionSpec = {
+            fadeIn(animationSpec = launcherStyle.faceSwitchEnterSpec) togetherWith
+                fadeOut(animationSpec = launcherStyle.faceSwitchExitSpec)
+        },
+        modifier = Modifier.fillMaxSize(),
+        label = "watchface_switch"
+    ) { _ ->
+        if (watchFace.isBuiltin) {
+            WatchFaceLayer(
+                watchFaceId = watchFace.id,
+                photoPath = photoPath,
+                videoPath = videoPath,
+                isFaceVisible = isFaceVisible,
+                uiStyle = uiStyle,
+                photoOptions = photoOptions,
+                videoOptions = videoOptions,
+                showChargingPowerText = watchFaceChargingPowerText,
+                showStatusIndicators = watchFaceStatusIndicators,
+                showBottomFade = watchFaceBottomFadeEnabled,
+                bottomFadeColor = watchFaceFadePalette.fadeEdge,
+                bottomFadeHeightDp = honeycombBottomFade,
+                bottomFadeBlurRadiusDp = if (blurEnabled && edgeBlurEnabled) honeycombEdgeBlurRadius else 0f,
+                hasNotifications = showNotification && notificationGroups.isNotEmpty(),
+                onLongPress = null,
+                onDoubleTap = if (
+                    doubleTapLockScreenEnabled &&
+                    launcherInteractive &&
+                    screenState == ScreenState.Face &&
+                    !sideSceneOverlayActive
+                ) lockScreenWithAccessibility else null
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize()) {
+                LunchWatchFaceHost(
+                    descriptor = watchFace,
+                    isFaceVisible = isFaceVisible,
+                    refreshToken = watchFaceRefreshToken,
+                    onLongPress = null,
+                    onDoubleTap = if (
+                        doubleTapLockScreenEnabled &&
+                        launcherInteractive &&
+                        screenState == ScreenState.Face &&
+                        !sideSceneOverlayActive
+                    ) lockScreenWithAccessibility else null,
+                    onLoadFailure = { descriptor, error ->
+                        val rootCause = generateSequence(error) { it.cause }.last()
+                        vm.fallbackToBuiltIn("${descriptor.displayName}: ${rootCause.message ?: rootCause.javaClass.simpleName}")
+                    }
+                )
+                if (watchFaceBottomFadeEnabled) {
+                    WatchFaceBottomFadeOverlay(
+                        color = watchFaceFadePalette.fadeEdge,
+                        heightDp = honeycombBottomFade,
+                        blurRadiusDp = if (blurEnabled && edgeBlurEnabled) honeycombEdgeBlurRadius else 0f
+                    )
+                }
+                WatchFaceStatusIndicatorOverlay(
+                    showStatusIndicators = watchFaceStatusIndicators,
+                    hasNotifications = showNotification && notificationGroups.isNotEmpty(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 18.dp)
+                )
             }
         }
     }

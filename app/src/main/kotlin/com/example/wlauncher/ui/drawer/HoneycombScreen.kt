@@ -979,11 +979,11 @@ fun HoneycombScreen(
                             longPressedApp == null
                     )
                     val effectiveItemBlur = reduceHoneycombBlurForFastScroll(itemBlur, reduceVisualLoad)
+                    val displayIcon = remember(appKey, twoToneIconsEnabled) {
+                        app.iconForDisplay(useTwoTone = twoToneIconsEnabled, blurred = false)
+                    }
                     AppBubble(
-                        icon = app.iconForDisplay(
-                            useTwoTone = twoToneIconsEnabled,
-                            blurred = false
-                        ),
+                        icon = displayIcon,
                         size = iconSizeDp,
                         tintColor = Color.Transparent,
                         shape = launcherStyle.bubbleShape,
@@ -1095,11 +1095,11 @@ fun HoneycombScreen(
                 } else {
                     1f
                 }
+                val dragOverlayIcon = remember(dragOverlayApp.componentKey, twoToneIconsEnabled) {
+                    dragOverlayApp.iconForDisplay(useTwoTone = twoToneIconsEnabled, blurred = false)
+                }
                 AppBubble(
-                    icon = dragOverlayApp.iconForDisplay(
-                        useTwoTone = twoToneIconsEnabled,
-                        blurred = false
-                    ),
+                    icon = dragOverlayIcon,
                     size = iconSizeDp,
                     tintColor = Color.Transparent,
                     shape = launcherStyle.bubbleShape,
