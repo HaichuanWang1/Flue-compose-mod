@@ -1,0 +1,45 @@
+#version 100
+#extension GL_OES_standard_derivatives : require
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    highp vec4 u_textColor;
+    highp vec4 u_effectColor;
+    highp float u_effectWidth;
+    mediump int u_labelPass;
+};
+
+uniform fs_ub _37;
+
+uniform mediump sampler2D u_tex0;
+
+varying highp vec2 v_texCoord;
+varying highp vec4 v_color;
+
+void main()
+{
+    highp float dist = texture2D(u_tex0, v_texCoord).x;
+    highp float smoothing = fwidth(dist);
+    highp float textAlpha = smoothstep(0.5 - smoothing, 0.5 + smoothing, dist);
+    if (_37.u_labelPass == 0)
+    {
+        gl_FragData[0] = v_color * vec4(_37.u_textColor.xyz, _37.u_textColor.w * textAlpha);
+    }
+    else
+    {
+        if (_37.u_labelPass == 1)
+        {
+            highp float pivot = clamp(0.5 - (_37.u_effectWidth * 0.425000011920928955078125), 0.0, 1.0);
+            highp float outlineAlpha = smoothstep(pivot - smoothing, pivot + smoothing, dist);
+            highp float alpha = outlineAlpha * (1.0 - textAlpha);
+            gl_FragData[0] = v_color * vec4(_37.u_effectColor.xyz, _37.u_effectColor.w * alpha);
+        }
+        else
+        {
+            gl_FragData[0] = v_color * vec4(_37.u_effectColor.xyz, _37.u_effectColor.w * textAlpha);
+        }
+    }
+}
+

@@ -29,7 +29,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -257,7 +259,7 @@ private fun StoreScreen(onBack: () -> Unit, apiBase: String, domain: String) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("表盘商店") },
+                title = { Text("表盘商店", fontSize = 16.sp) },
                 navigationIcon = {
                     androidx.compose.material3.IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
@@ -277,9 +279,9 @@ private fun StoreScreen(onBack: () -> Unit, apiBase: String, domain: String) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                placeholder = { Text("搜索表盘...", color = WatchColors.TextTertiary) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = WatchColors.TextTertiary) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).height(44.dp),
+                placeholder = { Text("搜索表盘...", color = WatchColors.TextTertiary, fontSize = 12.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = WatchColors.TextTertiary, modifier = Modifier.size(18.dp)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
@@ -304,6 +306,24 @@ private fun StoreScreen(onBack: () -> Unit, apiBase: String, domain: String) {
                 onSortChange = { currentSort = it },
                 onScreenTypeChange = { currentScreenType = it }
             )
+
+            // Info hint: download path + permission tip
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 2.dp)
+                    .background(WatchColors.SurfaceGlass, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "↓ /Download/watchface/ · 首次使用需授权存储权限",
+                    color = WatchColors.TextTertiary,
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
             // Content
             when {
@@ -414,14 +434,15 @@ private fun FilterChipRow(
     )
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // Sort: popular
         FilterChip(
             selected = currentSort == "popular",
             onClick = { onSortChange(if (currentSort == "popular") "" else "popular") },
-            label = { Text("最热", fontSize = 11.sp) },
+            label = { Text("最热", fontSize = 10.sp) },
+            modifier = Modifier.height(28.dp),
             colors = chipColors
         )
 
@@ -430,7 +451,8 @@ private fun FilterChipRow(
             FilterChip(
                 selected = currentScreenType == type,
                 onClick = { onScreenTypeChange(if (currentScreenType == type) "" else type) },
-                label = { Text(label, fontSize = 11.sp) },
+                label = { Text(label, fontSize = 10.sp) },
+                modifier = Modifier.height(28.dp),
                 colors = chipColors
             )
         }
@@ -440,7 +462,8 @@ private fun FilterChipRow(
             FilterChip(
                 selected = currentCategory == slug,
                 onClick = { onCategoryChange(if (currentCategory == slug) "" else slug) },
-                label = { Text(name, fontSize = 11.sp) },
+                label = { Text(name, fontSize = 10.sp) },
+                modifier = Modifier.height(28.dp),
                 colors = chipColors
             )
         }
@@ -451,6 +474,13 @@ private fun FilterChipRow(
 
 @Composable
 private fun StoreCard(item: StoreItem, onClick: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(item.previewUrl) {
+        bitmap = withContext(Dispatchers.IO) { StorePreviewCache.load(item.previewUrl) }
+    }
+
     androidx.compose.material3.Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
@@ -461,19 +491,18 @@ private fun StoreCard(item: StoreItem, onClick: () -> Unit) {
         Column {
             // Preview image
             Box(
-                modifier = Modifier.fillMaxWidth().height(140.dp).background(WatchColors.Background),
+                modifier = Modifier.fillMaxWidth().height(120.dp).background(WatchColors.Background),
                 contentAlignment = Alignment.Center
             ) {
-                val bitmap = remember(item.previewUrl) { StorePreviewCache.load(item.previewUrl) }
                 if (bitmap != null) {
                     Image(
-                        bitmap = bitmap.asImageBitmap(),
+                        bitmap = bitmap!!.asImageBitmap(),
                         contentDescription = item.name,
                         modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
                         contentScale = ContentScale.Crop
                     )
                 } else {
-                    Text(item.name.take(8), color = WatchColors.TextTertiary, fontSize = 14.sp)
+                    Text(item.name.take(8), color = WatchColors.TextTertiary, fontSize = 12.sp)
                 }
                 // Downloaded badge
                 if (item.isDownloaded) {
@@ -481,22 +510,22 @@ private fun StoreCard(item: StoreItem, onClick: () -> Unit) {
                         Icons.Default.CheckCircle,
                         contentDescription = "已下载",
                         tint = WatchColors.ActiveGreen,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp)
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(16.dp)
                     )
                 }
             }
-            Column(modifier = Modifier.padding(8.dp)) {
+            Column(modifier = Modifier.padding(6.dp)) {
                 Text(
                     item.name,
                     color = WatchColors.White,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     "${item.downloadCount} ⬇",
                     color = WatchColors.TextTertiary,
-                    fontSize = 11.sp
+                    fontSize = 10.sp
                 )
             }
         }
@@ -517,7 +546,7 @@ private fun StoreDetailSheet(
     onDismiss: () -> Unit,
     onDownload: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberModalBottomSheetState()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -525,12 +554,15 @@ private fun StoreDetailSheet(
         containerColor = WatchColors.Background,
         contentColor = WatchColors.White
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Preview
-            val bitmap = remember(item.previewUrl) { StorePreviewCache.load(item.previewUrl, 512) }
-            if (bitmap != null) {
+        Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+            // Preview — async load
+            var detailBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+            LaunchedEffect(item.previewUrl) {
+                detailBitmap = withContext(Dispatchers.IO) { StorePreviewCache.load(item.previewUrl, 512) }
+            }
+            if (detailBitmap != null) {
                 Image(
-                    bitmap = bitmap.asImageBitmap(),
+                    bitmap = detailBitmap!!.asImageBitmap(),
                     contentDescription = item.name,
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)),
                     contentScale = ContentScale.FillWidth

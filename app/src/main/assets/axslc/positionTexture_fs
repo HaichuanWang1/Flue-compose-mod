@@ -1,0 +1,13 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+uniform mediump sampler2D u_tex0;
+
+varying highp vec2 v_texCoord;
+
+void main()
+{
+    gl_FragData[0] = texture2D(u_tex0, v_texCoord);
+}
+

@@ -1,0 +1,958 @@
+/****************************************************************************
+Copyright (c) 2010-2012 cocos2d-x.org
+Copyright (c) 2013-2016 Chukong Technologies Inc.
+Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
+Copyright (c) 2019-present Axmol Engine contributors (see AUTHORS.md).
+
+https://axmol.dev/
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+ ****************************************************************************/
+package dev.axmol.lib;
+
+import android.annotation.SuppressLint;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
+import android.graphics.Rect;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.media.AudioManager;
+import android.app.Activity;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager.NameNotFoundException;
+import android.content.res.AssetFileDescriptor;
+import android.content.res.AssetManager;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
+import android.os.Vibrator;
+import android.preference.PreferenceManager.OnActivityResultListener;
+import android.util.DisplayMetrics;
+import android.util.Log;
+import android.view.Display;
+import android.view.DisplayCutout;
+import android.view.KeyCharacterMap;
+import android.view.KeyEvent;
+import android.view.Surface;
+import android.view.View;
+import android.view.ViewConfiguration;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowManager;
+
+// OBB expansion and ProcessPhoenix stubs removed for Flue integration
+
+import java.io.IOException;
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.UnsupportedEncodingException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+
+public class AxmolEngine {
+    // ===========================================================
+    // Constants
+    // ===========================================================
+    private static final String PREFS_NAME = "AXPrefsFile";
+    private static final int RUNNABLES_PER_FRAME = 5;
+    private static final String TAG = AxmolEngine.class.getSimpleName();
+
+    // ===========================================================
+    // Fields
+    // ===========================================================
+    private static AssetManager sAssetManager;
+    private static AxmolAccelerometer sAccelerometer = null;
+    private static boolean sAccelerometerEnabled;
+    private static boolean sCompassEnabled;
+    private static boolean sActivityVisible;
+    private static String sPackageName;
+    private static Activity sActivity = null;
+    private static AxmolEngineListener sAxmolEngineListener;
+    private static Set<OnActivityResultListener> onActivityResultListeners = new LinkedHashSet<OnActivityResultListener>();
+    private static Vibrator sVibrateService = null;
+
+    // The absolute path to the OBB if it exists, else the absolute path to the APK.
+    private static String sAssetsPath = "";
+
+    // The OBB file
+    // OBB expansion stub - not needed for Flue
+    // private static ZipResourceFile sOBBFile = null;
+
+    // ===========================================================
+    // Constructors
+    // ===========================================================
+
+    public static void runOnGLThread(final Runnable r) {
+        nativeRunOnGLThread(r);
+    }
+
+    public static void runOnUiThread(final Runnable r) {
+        sActivity.runOnUiThread(r);
+    }
+
+    public static void queueOperation(final long op, final long param) {
+        ((AxmolActivity)sActivity).getGLSurfaceView().queueEvent(new Runnable() {
+            @Override
+            public void run() {
+                AxmolEngine.nativeCall0(op, param);
+            }
+        });
+    }
+
+    private static boolean sInited = false;
+    public static void init(final Activity activity) {
+        sActivity = activity;
+        AxmolEngine.sAxmolEngineListener = (AxmolEngineListener)activity;
+        if (!sInited) {
+
+            PackageManager pm = activity.getPackageManager();
+            boolean isSupportLowLatency = pm.hasSystemFeature(PackageManager.FEATURE_AUDIO_LOW_LATENCY);
+            Log.d(TAG, String.format("android version is %d, isSupportLowLatency: %s", Build.VERSION.SDK_INT, isSupportLowLatency ? "true" : "false") );
+
+            final ApplicationInfo applicationInfo = activity.getApplicationInfo();
+
+            AxmolEngine.sPackageName = applicationInfo.packageName;
+
+            AxmolEngine.sAssetManager = activity.getAssets();
+            AxmolEngine.nativeSetContext((Context)activity, AxmolEngine.sAssetManager);
+
+            // AxmolMediaEngine.setContext(activity); // Removed for Flue
+
+            BitmapHelper.setContext(activity);
+
+            AxmolEngine.sVibrateService = (Vibrator)activity.getSystemService(Context.VIBRATOR_SERVICE);
+
+            sInited = true;
+        }
+    }
+
+    // This function returns the absolute path to the OBB if it exists,
+    // else it returns the absolute path to the APK.
+    public static String getAssetsPath()
+    {
+        if (AxmolEngine.sAssetsPath.equals("")) {
+
+            String pathToOBB = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Android/obb/" + AxmolEngine.sPackageName;
+
+	    	// Listing all files inside the folder (pathToOBB) where OBB files are expected to be found.
+            String[] fileNames = new File(pathToOBB).list(new FilenameFilter() { // Using filter to pick up only main OBB file name.
+                public boolean accept(File dir, String name) {
+                    return name.startsWith("main.") && name.endsWith(".obb");  // It's possible to filter only by extension here to get path to patch OBB file also.
+                }
+            });
+
+            String fullPathToOBB = "";
+            if (fileNames != null && fileNames.length > 0)  // If there is at least 1 element inside the array with OBB file names, then we may think fileNames[0] will have desired main OBB file name.
+                fullPathToOBB = pathToOBB + "/" + fileNames[0];  // Composing full file name for main OBB file.
+
+            File obbFile = new File(fullPathToOBB);
+            if (obbFile.exists())
+                AxmolEngine.sAssetsPath = fullPathToOBB;
+            else
+                AxmolEngine.sAssetsPath = AxmolEngine.sActivity.getApplicationInfo().sourceDir;
+        }
+
+        return AxmolEngine.sAssetsPath;
+    }
+
+    // OBB expansion - stubbed out
+    public static Object getObbFile() {
+        return null;
+    }
+
+    public static Activity getActivity() {
+        return sActivity;
+    }
+
+    public static void addOnActivityResultListener(OnActivityResultListener listener) {
+        onActivityResultListeners.add(listener);
+    }
+
+    public static Set<OnActivityResultListener> getOnActivityResultListeners() {
+        return onActivityResultListeners;
+    }
+
+    public static boolean isActivityVisible(){
+        return sActivityVisible;
+    }
+
+    // ===========================================================
+    // Getter & Setter
+    // ===========================================================
+
+    // ===========================================================
+    // Methods for/from SuperClass/Interfaces
+    // ===========================================================
+
+    // ===========================================================
+    // Methods
+    // ===========================================================
+
+    private static native void nativeRunOnGLThread(final Object runnable);
+
+    private static native void nativeSetEditTextDialogResult(final byte[] pBytes);
+
+    private static native void nativeSetContext(final Object pContext, final Object pAssetManager);
+
+    // private static native void nativeSetAudioDeviceInfo(boolean isSupportLowLatency, int deviceSampleRate, int audioBufferSizeInFames);
+
+    public static native void nativeCall0(long func, long ud);
+
+    public static String getPackageName() {
+        return AxmolEngine.sPackageName;
+    }
+    public static String getInternalFilesDir() {
+        return sActivity.getFilesDir().getAbsolutePath();
+    }
+
+    public static String getExternalFilesDir() {
+        return Objects.requireNonNull(sActivity.getExternalFilesDir(null)).getAbsolutePath();
+    }
+
+    public static String getCurrentLanguage() {
+        return Locale.getDefault().getLanguage();
+    }
+
+    public static String getDeviceModel(){
+        return Build.MODEL;
+    }
+
+    public static AssetManager getAssetManager() {
+        return AxmolEngine.sAssetManager;
+    }
+
+    public static void enableAccelerometer() {
+        AxmolEngine.sAccelerometerEnabled = true;
+        AxmolEngine.getAccelerometer().enableAccel();
+    }
+
+    public static void enableCompass() {
+        AxmolEngine.sCompassEnabled = true;
+        AxmolEngine.getAccelerometer().enableCompass();
+    }
+
+    public static void setAccelerometerInterval(float interval) {
+        AxmolEngine.getAccelerometer().setInterval(interval);
+    }
+
+    public static void disableAccelerometer() {
+        AxmolEngine.sAccelerometerEnabled = false;
+        AxmolEngine.getAccelerometer().disable();
+    }
+
+    public static void setKeepScreenOn(boolean value) {
+        ((AxmolActivity)sActivity).setKeepScreenOn(value);
+    }
+
+    public static void vibrate(float duration) {
+        sVibrateService.vibrate((long)(duration * 1000));
+    }
+
+    public static void impactOccurred(int style) {
+        ((AxmolActivity)sActivity).impactOccurred(style);
+    }
+
+    public static void notificationOccurred(int type) {
+        ((AxmolActivity)sActivity).notificationOccurred(type);
+    }
+
+    public static void selectionChanged() {
+        ((AxmolActivity)sActivity).selectionChanged();
+    }
+
+ 	public static String getVersion() {
+ 		try {
+ 			String version = AxmolActivity.getContext().getPackageManager().getPackageInfo(AxmolActivity.getContext().getPackageName(), 0).versionName;
+ 			return version;
+ 		} catch(Exception e) {
+ 			return "";
+ 		}
+ 	}
+
+    public static boolean openURL(String url) {
+        boolean ret = false;
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setData(Uri.parse(url));
+            sActivity.startActivity(i);
+            ret = true;
+        } catch (Exception e) {
+        }
+        return ret;
+    }
+
+    public static long[] getObbAssetFileDescriptor(final String path) {
+        // OBB expansion not supported in Flue
+        return new long[3];
+    }
+
+    public static void onResume() {
+        sActivityVisible = true;
+        if (AxmolEngine.sAccelerometerEnabled) {
+            AxmolEngine.getAccelerometer().enableAccel();
+        }
+        if (AxmolEngine.sCompassEnabled) {
+            AxmolEngine.getAccelerometer().enableCompass();
+        }
+    }
+
+    public static void onPause() {
+        sActivityVisible = false;
+        if (AxmolEngine.sAccelerometerEnabled) {
+            AxmolEngine.getAccelerometer().disable();
+        }
+    }
+
+    public static void onExit() {
+        // Remove it from recent apps.
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            sActivity.finishAndRemoveTask();
+        }
+    }
+
+    private static void showDialog(final String pTitle, final String pMessage) {
+        AxmolEngine.sAxmolEngineListener.showDialog(pTitle, pMessage);
+    }
+
+
+    public static void setEditTextDialogResult(final String pResult) {
+        try {
+            final byte[] bytesUTF8 = pResult.getBytes("UTF8");
+
+            AxmolEngine.runOnGLThread(new Runnable() {
+                @Override
+                public void run() {
+                    AxmolEngine.nativeSetEditTextDialogResult(bytesUTF8);
+                }
+            });
+        } catch (UnsupportedEncodingException pUnsupportedEncodingException) {
+            /* Nothing. */
+        }
+    }
+
+    private static int displayMetricsToDPI(DisplayMetrics metrics)
+    {
+        return metrics.densityDpi;
+    }
+
+    public static int getDPI()
+    {
+        if (sActivity != null)
+        {
+            DisplayMetrics metrics = new DisplayMetrics();
+            WindowManager wm = sActivity.getWindowManager();
+            if (wm != null)
+            {
+                Display d = wm.getDefaultDisplay();
+                if (d != null)
+                {
+                    try {
+                        Method getRealMetrics = d.getClass().getMethod("getRealMetrics", metrics.getClass());
+                        getRealMetrics.invoke(d, metrics);
+                        return displayMetricsToDPI(metrics);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    d.getMetrics(metrics);
+                    return displayMetricsToDPI(metrics);
+                }
+            }
+        }
+        return -1;
+    }
+
+    // ===========================================================
+    // Functions for CCUserDefault
+    // ===========================================================
+
+    public static boolean getBoolForKey(String key, boolean defaultValue) {
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        try {
+            return settings.getBoolean(key, defaultValue);
+        }
+        catch (Exception ex) {
+            ex.printStackTrace();
+
+            Map allValues = settings.getAll();
+            Object value = allValues.get(key);
+            if ( value instanceof String)
+            {
+                return  Boolean.parseBoolean(value.toString());
+            }
+            else if (value instanceof Integer)
+            {
+                int intValue = ((Integer) value).intValue();
+                return (intValue !=  0) ;
+            }
+            else if (value instanceof Float)
+            {
+                float floatValue = ((Float) value).floatValue();
+                return (floatValue != 0.0f);
+            }
+        }
+
+        return defaultValue;
+    }
+
+    public static int getIntegerForKey(String key, int defaultValue) {
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        try {
+            return settings.getInt(key, defaultValue);
+        }
+        catch (Exception ex) {
+            ex.printStackTrace();
+
+            Map allValues = settings.getAll();
+            Object value = allValues.get(key);
+            if ( value instanceof String) {
+                return  Integer.parseInt(value.toString());
+            }
+            else if (value instanceof Float)
+            {
+                return ((Float) value).intValue();
+            }
+            else if (value instanceof Boolean)
+            {
+                boolean booleanValue = ((Boolean) value).booleanValue();
+                if (booleanValue)
+                    return 1;
+            }
+        }
+
+        return defaultValue;
+    }
+
+    public static float getFloatForKey(String key, float defaultValue) {
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        try {
+            return settings.getFloat(key, defaultValue);
+        }
+        catch (Exception ex) {
+            ex.printStackTrace();
+
+            Map allValues = settings.getAll();
+            Object value = allValues.get(key);
+            if ( value instanceof String) {
+                return  Float.parseFloat(value.toString());
+            }
+            else if (value instanceof Integer)
+            {
+                return ((Integer) value).floatValue();
+            }
+            else if (value instanceof Boolean)
+            {
+                boolean booleanValue = ((Boolean) value).booleanValue();
+                if (booleanValue)
+                    return 1.0f;
+            }
+        }
+
+        return defaultValue;
+    }
+
+    public static double getDoubleForKey(String key, double defaultValue) {
+        // SharedPreferences doesn't support saving double value
+        return getFloatForKey(key, (float) defaultValue);
+    }
+
+    public static String getStringForKey(String key, String defaultValue) {
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        try {
+            return settings.getString(key, defaultValue);
+        }
+        catch (Exception ex) {
+            ex.printStackTrace();
+
+            return settings.getAll().get(key).toString();
+        }
+    }
+
+    public static void setBoolForKey(String key, boolean value) {
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putBoolean(key, value);
+        editor.apply();
+    }
+
+    public static void setIntegerForKey(String key, int value) {
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putInt(key, value);
+        editor.apply();
+    }
+
+    public static void setFloatForKey(String key, float value) {
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putFloat(key, value);
+        editor.apply();
+    }
+
+    public static void setDoubleForKey(String key, double value) {
+        // SharedPreferences doesn't support recording double value
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putFloat(key, (float)value);
+        editor.apply();
+    }
+
+    public static void setStringForKey(String key, String value) {
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putString(key, value);
+        editor.apply();
+    }
+
+    public static void deleteValueForKey(String key) {
+        SharedPreferences settings = sActivity.getSharedPreferences(AxmolEngine.PREFS_NAME, 0);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.remove(key);
+        editor.apply();
+    }
+
+    public static byte[] conversionEncoding(byte[] text, String fromCharset,String newCharset)
+    {
+        try {
+            String str = new String(text,fromCharset);
+            return str.getBytes(newCharset);
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+    // ===========================================================
+    // Inner and Anonymous Classes
+    // ===========================================================
+
+    public static interface AxmolEngineListener {
+        public void showDialog(final String pTitle, final String pMessage);
+    }
+
+    /**
+     * Returns whether the screen has a round shape. Apps may choose to change styling based
+     * on this property, such as the alignment or layout of text or informational icons.
+     *
+     * @return true if the screen is rounded, false otherwise
+     */
+    public static boolean isScreenRound() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (sActivity.getResources().getConfiguration().isScreenRound()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Returns whether the window is always allowed to extend into the DisplayCutout areas on the short edges of the screen.
+     *
+     * @return true if the window in display cutout mode on the short edges of the screen, false otherwise
+     */
+    @SuppressLint("InlinedApi")
+    public static boolean isCutoutEnabled() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams lp = sActivity.getWindow().getAttributes();
+            return lp.layoutInDisplayCutoutMode == WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }
+
+        return false;
+    }
+
+    /**
+     * Returns safe insets array.
+     *
+     * @return array of int with safe insets values
+     */
+    @SuppressLint("NewApi")
+    public static int[] getSafeInsets() {
+        final int[] safeInsets = new int[]{0, 0, 0, 0};
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Window cocosWindow = sActivity.getWindow();
+            DisplayCutout displayCutout = cocosWindow.getDecorView().getRootWindowInsets().getDisplayCutout();
+            // Judge whether it is cutouts (aka notch) screen phone by judge cutout equle to null
+            if (displayCutout != null) {
+                List<Rect> rects = displayCutout.getBoundingRects();
+                // Judge whether it is cutouts (aka notch) screen phone by judge cutout rects is null or zero size
+                if (rects != null && rects.size() != 0) {
+                    safeInsets[0] = displayCutout.getSafeInsetBottom();
+                    safeInsets[1] = displayCutout.getSafeInsetLeft();
+                    safeInsets[2] = displayCutout.getSafeInsetRight();
+                    safeInsets[3] = displayCutout.getSafeInsetTop();
+                }
+            }
+        }
+
+        return safeInsets;
+    }
+
+    /**
+     * Returns rounded corner radius array.
+     *
+     * @return array of int with rounded corner radius values
+     */
+    @SuppressLint("NewApi")
+    public static int[] getDeviceCornerRadii() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            final int[] radii = new int[]{0, 0, 0, 0};
+            Window cocosWindow = sActivity.getWindow();
+            View view = cocosWindow.getDecorView();
+            WindowInsets insets = view.getRootWindowInsets();
+            android.view.RoundedCorner topLeft = insets.getRoundedCorner(android.view.RoundedCorner.POSITION_TOP_LEFT);
+            android.view.RoundedCorner topRight = insets.getRoundedCorner(android.view.RoundedCorner.POSITION_TOP_RIGHT);
+            android.view.RoundedCorner bottomLeft = insets.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_LEFT);
+            android.view.RoundedCorner bottomRight = insets.getRoundedCorner(android.view.RoundedCorner.POSITION_BOTTOM_RIGHT);
+            int radiusTopLeft = 0;
+            int radiusTopRight = 0;
+            int radiusBottomLeft = 0;
+            int radiusBottomRight = 0;
+            if (topLeft != null) radiusTopLeft = topLeft.getRadius();
+            if (topRight != null) radiusTopRight = topRight.getRadius();
+            if (bottomLeft != null) radiusBottomLeft = bottomLeft.getRadius();
+            if (bottomRight != null) radiusBottomRight = bottomRight.getRadius();
+
+            int leftRadius = Math.max(radiusTopLeft, radiusBottomLeft);
+            int topRadius = Math.max(radiusTopLeft, radiusTopRight);
+            int rightRadius = Math.max(radiusTopRight, radiusBottomRight);
+            int bottomRadius = Math.max(radiusBottomLeft, radiusBottomRight);
+
+            radii[0] = bottomRadius;
+            radii[1] = leftRadius;
+            radii[2] = rightRadius;
+            radii[3] = topRadius;
+            return radii;
+        }
+
+        return null;
+    }
+
+    /**
+     * Queries about whether any physical keys exist on the
+     * any keyboard attached to the device and returns <code>true</code>
+     * if the device does not have physical keys
+     *
+     * @return Returns <code>true</code> if the device have no physical keys,
+     * otherwise <code>false</code> will returned.
+     */
+    public static boolean hasSoftKeys() {
+        boolean hasSoftwareKeys = true;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            Display display = sActivity.getWindowManager().getDefaultDisplay();
+
+            DisplayMetrics realDisplayMetrics = new DisplayMetrics();
+            display.getRealMetrics(realDisplayMetrics);
+
+            int realHeight = realDisplayMetrics.heightPixels;
+            int realWidth = realDisplayMetrics.widthPixels;
+
+            DisplayMetrics displayMetrics = new DisplayMetrics();
+            display.getMetrics(displayMetrics);
+
+            int displayHeight = displayMetrics.heightPixels;
+            int displayWidth = displayMetrics.widthPixels;
+
+            hasSoftwareKeys = (realWidth - displayWidth) > 0 ||
+                    (realHeight - displayHeight) > 0;
+        } else {
+            boolean hasMenuKey = ViewConfiguration.get(sActivity).hasPermanentMenuKey();
+            boolean hasBackKey = KeyCharacterMap.deviceHasKey(KeyEvent.KEYCODE_BACK);
+            hasSoftwareKeys = !hasMenuKey && !hasBackKey;
+        }
+        return hasSoftwareKeys;
+    }
+
+    public static float[] getAccelValue() {
+        return AxmolEngine.getAccelerometer().accelerometerValues;
+    }
+
+    public static float[] getCompassValue() {
+        return AxmolEngine.getAccelerometer().compassFieldValues;
+    }
+
+    public static int getSDKVersion() {
+        return Build.VERSION.SDK_INT;
+    }
+
+    public static void restartProcess() {
+        System.exit(0);
+    }
+
+    private static AxmolAccelerometer getAccelerometer() {
+        if (null == sAccelerometer)
+            AxmolEngine.sAccelerometer = new AxmolAccelerometer(sActivity);
+
+        return sAccelerometer;
+    }
+
+    public static String[] getAssetsList(String path) {
+        try {
+            String basePath;
+            if (!path.isEmpty()) {
+                basePath = path + "/";
+            } else {
+                basePath = path;
+            }
+
+            AssetManager assetManager = getAssetManager();
+            String[] list = assetManager.list(path);
+            for (int i = 0; i < list.length; i++) {
+                try {
+                    list[i] = basePath + list[i];
+                    java.io.InputStream stream = assetManager.open(list[i]);
+                    stream.close(); // if we got to here, then it is a file
+                } catch (IOException e) {
+                    list[i] += "/";
+                }
+            }
+            return list;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    // ===== Orientation constants (must match C++ enum values) =====
+    public static final int ORIENTATION_UNKNOWN          = 0;
+    public static final int ORIENTATION_PORTRAIT         = 1; // Portrait (upright)
+    public static final int ORIENTATION_REVERSE_PORTRAIT = 2; // Portrait upside down
+    public static final int ORIENTATION_SENSOR_PORTRAIT  = 3; // Portrait + reverse portrait (auto-rotate)
+
+    public static final int ORIENTATION_LANDSCAPE         = 4; // Landscape (left)
+    public static final int ORIENTATION_REVERSE_LANDSCAPE = 5; // Landscape (right)
+    public static final int ORIENTATION_SENSOR_LANDSCAPE  = 6; // Landscape + reverse landscape (auto-rotate)
+
+    public static final int ORIENTATION_SENSOR     = 7; // All except upside down (auto-rotate)
+    public static final int ORIENTATION_FULL_SENSOR = 8; // All including upside down (auto-rotate)
+
+    // ===== OrientationMask constants (must match C++ enum values) =====
+    public static final int ORIENTATION_MASK_PORTRAIT         = 1;
+    public static final int ORIENTATION_MASK_REVERSE_PORTRAIT = 1 << 1;
+    public static final int ORIENTATION_MASK_LANDSCAPE        = 1 << 2;
+    public static final int ORIENTATION_MASK_REVERSE_LANDSCAPE= 1 << 3;
+    public static final int ORIENTATION_MASK_ALL = ORIENTATION_MASK_PORTRAIT |
+        ORIENTATION_MASK_REVERSE_PORTRAIT |
+        ORIENTATION_MASK_LANDSCAPE |
+        ORIENTATION_MASK_REVERSE_LANDSCAPE;
+
+    // Cached supported orientation mask, -1 means uninitialized
+    private static int sSupportedOrientationMask = -1;
+
+    /**
+     * Sets the preferred screen orientation for the current activity.
+     * @param orientation One of the ORIENTATION_* constants.
+     */
+    @SuppressWarnings("unused")
+    public static void setPreferredOrientation(int orientation) {
+        if (sActivity == null) return;
+
+        int androidOrientation;
+        switch (orientation) {
+            case ORIENTATION_PORTRAIT:
+                androidOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+                break;
+            case ORIENTATION_REVERSE_PORTRAIT:
+                androidOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT;
+                break;
+            case ORIENTATION_SENSOR_PORTRAIT:
+                androidOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT;
+                break;
+            case ORIENTATION_LANDSCAPE:
+                androidOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+                break;
+            case ORIENTATION_REVERSE_LANDSCAPE:
+                androidOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+                break;
+            case ORIENTATION_SENSOR_LANDSCAPE:
+                androidOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+                break;
+            case ORIENTATION_SENSOR:
+                androidOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR;
+                break;
+            case ORIENTATION_FULL_SENSOR:
+                androidOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR;
+                break;
+            default:
+                androidOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+                break;
+        }
+
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                sActivity.setRequestedOrientation(androidOrientation);
+            }
+        });
+    }
+
+    /**
+     * Returns the supported orientation mask for the device.
+     * This example assumes all orientations are supported.
+     * @return Bitmask of ORIENTATION_MASK_* constants.
+     */
+    @SuppressWarnings("unused")
+    public static int getSupportedOrientations() {
+        // Return cached value if already initialized
+        if (sSupportedOrientationMask != -1) {
+            return sSupportedOrientationMask;
+        }
+
+        if (sActivity == null) {
+            sSupportedOrientationMask = ORIENTATION_MASK_ALL; // fallback
+            return sSupportedOrientationMask;
+        }
+
+        try {
+            PackageManager pm = sActivity.getPackageManager();
+            ActivityInfo info = pm.getActivityInfo(
+                sActivity.getComponentName(),
+                PackageManager.GET_META_DATA
+            );
+
+            switch (info.screenOrientation) {
+                case ActivityInfo.SCREEN_ORIENTATION_PORTRAIT:
+                    sSupportedOrientationMask = ORIENTATION_MASK_PORTRAIT;
+                    break;
+                case ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT:
+                    sSupportedOrientationMask = ORIENTATION_MASK_REVERSE_PORTRAIT;
+                    break;
+                case ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT:
+                    sSupportedOrientationMask = ORIENTATION_MASK_PORTRAIT | ORIENTATION_MASK_REVERSE_PORTRAIT;
+                    break;
+                case ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE:
+                    sSupportedOrientationMask = ORIENTATION_MASK_LANDSCAPE;
+                    break;
+                case ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE:
+                    sSupportedOrientationMask = ORIENTATION_MASK_REVERSE_LANDSCAPE;
+                    break;
+                case ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE:
+                    sSupportedOrientationMask = ORIENTATION_MASK_LANDSCAPE | ORIENTATION_MASK_REVERSE_LANDSCAPE;
+                    break;
+                case ActivityInfo.SCREEN_ORIENTATION_SENSOR:
+                    sSupportedOrientationMask = ORIENTATION_MASK_PORTRAIT | ORIENTATION_MASK_LANDSCAPE;
+                    break;
+                default:
+                    sSupportedOrientationMask = ORIENTATION_MASK_ALL;
+                    break;
+            }
+        } catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+            sSupportedOrientationMask = ORIENTATION_MASK_ALL;
+        }
+
+        return sSupportedOrientationMask;
+    }
+
+    /**
+     * Returns the current orientation of the device.
+     * @return One of the ORIENTATION_* constants.
+     */
+    @SuppressWarnings("unused")
+    public static int getCurrentOrientation() {
+        int rotation = sActivity.getWindowManager().getDefaultDisplay().getRotation();
+        switch (rotation) {
+            case Surface.ROTATION_0:
+                return ORIENTATION_PORTRAIT;
+            case Surface.ROTATION_90:
+                return ORIENTATION_LANDSCAPE;
+            case Surface.ROTATION_180:
+                return ORIENTATION_REVERSE_PORTRAIT;
+            case Surface.ROTATION_270:
+                return ORIENTATION_REVERSE_LANDSCAPE;
+            default:
+                return ORIENTATION_UNKNOWN;
+        }
+    }
+
+    @SuppressWarnings("unused")
+    public static int getPhysicalOrientation() {
+        SensorManager sm = (SensorManager) sActivity.getSystemService(Context.SENSOR_SERVICE);
+        Sensor rotationVector = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        if (rotationVector == null) {
+            return 0;
+        }
+
+        final CountDownLatch latch = new CountDownLatch(1);
+        final int[] result = new int[1];
+        SensorEventListener listener = new SensorEventListener() {
+            @Override
+            public void onSensorChanged(SensorEvent event) {
+                float[] rotationMatrix = new float[9];
+                float[] orientationVals = new float[3];
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values);
+                SensorManager.getOrientation(rotationMatrix, orientationVals);
+
+                float pitch = orientationVals[1];
+                float roll  = orientationVals[2];
+
+                if (Math.abs(roll) > Math.PI/4) {
+                    // landscape
+                    if (roll > 0) {
+                        result[0] = ORIENTATION_LANDSCAPE;
+                    } else {
+                        result[0] = ORIENTATION_REVERSE_LANDSCAPE;
+                    }
+                } else {
+                    // portrait
+                    if (pitch > 0) {
+                        result[0] = ORIENTATION_REVERSE_PORTRAIT;
+                    } else {
+                        result[0] = ORIENTATION_PORTRAIT;
+                    }
+                }
+
+                sm.unregisterListener(this);
+                latch.countDown();
+            }
+
+            @Override
+            public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+        };
+
+        sm.registerListener(listener, rotationVector, SensorManager.SENSOR_DELAY_UI);
+
+        try {
+            latch.await(500, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        return result[0];
+    }
+}

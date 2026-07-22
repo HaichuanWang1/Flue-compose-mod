@@ -1,0 +1,19 @@
+#version 100
+
+struct vs_ub
+{
+    mat4 u_cameraRot;
+};
+
+uniform vs_ub _13;
+
+attribute vec3 a_position;
+varying vec3 v_reflect;
+
+void main()
+{
+    vec4 _reflect = _13.u_cameraRot * vec4(a_position, 1.0);
+    v_reflect = _reflect.xyz;
+    gl_Position = vec4(a_position.xy, 1.0, 1.0);
+}
+

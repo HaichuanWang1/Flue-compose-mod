@@ -1,0 +1,50 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    highp float u_1;
+    highp float u_2;
+    highp float u_3;
+};
+
+uniform fs_ub _70;
+
+uniform mediump sampler2D u_tex0;
+
+varying highp vec2 v_texCoord;
+varying highp vec4 v_color;
+
+bool isBetween(highp float number_, highp float min_, highp float max_)
+{
+    return (number_ >= min_) && (number_ <= max_);
+}
+
+void main()
+{
+    highp vec4 color = texture2D(u_tex0, v_texCoord) * v_color;
+    highp float angleCover = 100.0;
+    highp vec2 centerPos = vec2(0.5);
+    highp float angle = (atan(v_texCoord.x - centerPos.x, centerPos.y - v_texCoord.y) * 180.0) / 3.1415927410125732421875;
+    if (angle < (_70.u_1 - angleCover))
+    {
+        angle += 360.0;
+    }
+    highp float param = angle;
+    highp float param_1 = _70.u_1 - angleCover;
+    highp float param_2 = _70.u_1;
+    if (isBetween(param, param_1, param_2))
+    {
+        highp float distTop = _70.u_1 - angle;
+        highp float pctUniform2 = distTop / angleCover;
+        highp float pctUniform3 = 1.0 - pctUniform2;
+        highp float mixOpacity = (pctUniform2 * _70.u_3) + (pctUniform3 * _70.u_2);
+        gl_FragData[0] = color * (mixOpacity / 100.0);
+    }
+    else
+    {
+        gl_FragData[0] = color * (_70.u_3 / 100.0);
+    }
+}
+

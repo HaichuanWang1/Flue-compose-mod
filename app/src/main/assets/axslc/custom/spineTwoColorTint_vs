@@ -1,0 +1,25 @@
+#version 100
+
+struct vs_ub
+{
+    mat4 u_PMatrix;
+};
+
+uniform vs_ub _30;
+
+varying vec4 v_light;
+attribute vec4 a_color;
+varying vec4 v_dark;
+attribute vec4 a_color2;
+varying vec2 v_texCoord;
+attribute vec2 a_texCoord;
+attribute vec4 a_position;
+
+void main()
+{
+    v_light = a_color;
+    v_dark = a_color2;
+    v_texCoord = a_texCoord;
+    gl_Position = _30.u_PMatrix * a_position;
+}
+

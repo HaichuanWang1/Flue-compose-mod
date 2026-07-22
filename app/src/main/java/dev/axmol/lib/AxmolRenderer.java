@@ -1,0 +1,271 @@
+/****************************************************************************
+ Copyright (c) 2010-2011 cocos2d-x.org
+ Copyright (c) 2017-2018 Xiamen Yaji Software Co., Ltd.
+ Copyright (c) 2019-present Axmol Engine contributors (see AUTHORS.md).
+ https://axmol.dev/
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ ****************************************************************************/
+package dev.axmol.lib;
+
+import android.opengl.GLSurfaceView;
+
+import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL10;
+public class AxmolRenderer implements GLSurfaceView.Renderer {
+    // ===========================================================
+    // Constants
+    // ===========================================================
+
+    private final static long NANOSECONDSPERSECOND = 1000000000L;
+    private final static long NANOSECONDSPERMICROSECOND = 1000000L;
+
+    // The final animation interval which is used in 'onDrawFrame'
+    private static long sAnimationInterval = (long) (1.0f / 60f * AxmolRenderer.NANOSECONDSPERSECOND);
+    private static long FPS_CONTROL_THRESHOLD = (long) (1.0f / 1200.0f * AxmolRenderer.NANOSECONDSPERSECOND);
+
+    // ===========================================================
+    // Fields
+    // ===========================================================
+
+    private long mLastTickInNanoSeconds;
+    private int mScreenWidth;
+    private int mScreenHeight;
+    private static boolean gNativeInitialized = false;
+    private static boolean gNativeIsPaused = false;
+    private boolean mSurfaceCreated = false;
+
+    // ===========================================================
+    // Constructors
+    // ===========================================================
+
+    // ===========================================================
+    // Getter & Setter
+    // ===========================================================
+
+    public static void setAnimationInterval(float interval) {
+        sAnimationInterval = (long) (interval * AxmolRenderer.NANOSECONDSPERSECOND);
+    }
+
+    private static final Object sFrameGate = new Object();
+    private static boolean sFrameKicked = false;
+    private static volatile long sBoostUntilNanos = 0;
+    private static final long BOOST_INTERVAL = (long) (1.0f / 60f * AxmolRenderer.NANOSECONDSPERSECOND);
+
+    /**
+     * Wake the render thread out of its FPS-throttle wait so an already-queued
+     * event (touch, bridge dispatch) is processed on the next loop iteration
+     * instead of after the full frame interval — at the 1 FPS static-watchface
+     * cadence the un-kicked wait adds up to a second of input latency.
+     * Call AFTER GLSurfaceView.queueEvent so the event is in the queue when
+     * the render thread wakes.
+     */
+    public static void kickFrame() {
+        synchronized (sFrameGate) {
+            sFrameKicked = true;
+            sFrameGate.notifyAll();
+        }
+    }
+
+    /**
+     * Run at full frame rate (60 FPS cap) for the next {@code seconds},
+     * overriding the low-FPS idle throttle, then decay back automatically.
+     * Everything user-visible that composites with or reads the GL surface —
+     * touch feedback, gesture/overlay animations, blur backdrop captures —
+     * needs real frames while the user interacts, regardless of what the
+     * watchface itself requires. Call from the UI thread on any touch.
+     */
+    public static void boostFrames(float seconds) {
+        long until = System.nanoTime() + (long) (seconds * AxmolRenderer.NANOSECONDSPERSECOND);
+        if (until > sBoostUntilNanos) sBoostUntilNanos = until;
+        // While the surface is occluded (forced 1 FPS), a kick per touch event
+        // would wake the render thread out of its wait each time — a scroll on
+        // the covering overlay drives the invisible face at touch-sample rate.
+        // Keep the boost timestamp so the face resumes at full rate the moment
+        // the cap lifts (setForceLowFps(false) kicks), but skip the wakeup.
+        if (!sForceLowFps) kickFrame();
+    }
+
+    private static volatile boolean sForceLowFps = false;
+
+    /**
+     * Hard-cap rendering at 1 FPS while {@code force} is true, overriding both
+     * the face's configured rate and the touch boost. Used while the GL surface
+     * is fully occluded by an opaque overlay (expanded app list): the face is
+     * invisible, so frames only steal CPU/GPU from the overlay's own rendering.
+     */
+    public static void setForceLowFps(boolean force) {
+        sForceLowFps = force;
+        if (!force) kickFrame();   // resume the normal rate without waiting out a 1s frame
+    }
+
+    public void setScreenWidthAndHeight(final int surfaceWidth, final int surfaceHeight) {
+        this.mScreenWidth = surfaceWidth;
+        this.mScreenHeight = surfaceHeight;
+    }
+
+    // ===========================================================
+    // Methods for/from SuperClass/Interfaces
+    // ===========================================================
+
+    @Override
+    public void onSurfaceCreated(final GL10 GL10, final EGLConfig EGLConfig) {
+        AxmolRenderer.nativeInit(this.mScreenWidth, this.mScreenHeight);
+        this.mLastTickInNanoSeconds = System.nanoTime();
+
+        boolean isWarmStart = !mSurfaceCreated;
+        mSurfaceCreated = true;
+
+        if (gNativeInitialized) {
+            // This must be from an OpenGL context loss
+            android.util.Log.w("AxmolRenderer", "onSurfaceCreated: GL context LOST -> nativeOnContextLost (full reload), isWarmStart=" + isWarmStart);
+            nativeOnContextLost(isWarmStart);
+        } else {
+            android.util.Log.i("AxmolRenderer", "onSurfaceCreated: first init");
+            gNativeInitialized = true;
+        }
+    }
+
+    @Override
+    public void onSurfaceChanged(final GL10 GL10, final int width, final int height) {
+        AxmolRenderer.nativeOnSurfaceChanged(width, height);
+    }
+
+    private static long sFrameCount = 0;
+    @Override
+    public void onDrawFrame(final GL10 gl) {
+        if (++sFrameCount % 60 == 1) {
+            android.util.Log.i("AxmolRenderer", "onDrawFrame alive, frame=" + sFrameCount);
+        }
+        /*
+         * Render time MUST be counted in, or the FPS will slower than appointed.
+         */
+        AxmolRenderer.nativeRender();
+        /*
+         * No need to use algorithm in default(60,90,120... FPS) situation,
+         * since onDrawFrame() was called by system 60 times per second by default.
+         */
+        long animationInterval = AxmolRenderer.sAnimationInterval;
+        if (sForceLowFps) {
+            // occluded: 1 FPS floor beats face rate AND the touch boost
+            animationInterval = Math.max(animationInterval, AxmolRenderer.NANOSECONDSPERSECOND);
+        } else if (System.nanoTime() < sBoostUntilNanos && animationInterval > BOOST_INTERVAL) {
+            animationInterval = BOOST_INTERVAL;   // interaction boost: full rate
+        }
+        if (animationInterval > AxmolRenderer.FPS_CONTROL_THRESHOLD) {
+            final long interval = System.nanoTime() - this.mLastTickInNanoSeconds;
+
+            if (interval < animationInterval) {
+                final long waitMs = (animationInterval - interval) / AxmolRenderer.NANOSECONDSPERMICROSECOND;
+                synchronized (sFrameGate) {
+                    try {
+                        if (!sFrameKicked && waitMs > 0) {
+                            sFrameGate.wait(waitMs);
+                        }
+                    } catch (final Exception e) {
+                    }
+                    sFrameKicked = false;
+                }
+            }
+
+            this.mLastTickInNanoSeconds = System.nanoTime();
+        }
+    }
+
+    // ===========================================================
+    // Methods
+    // ===========================================================
+
+    private static native void nativeTouchesBegin(final int id, final float x, final float y);
+    private static native void nativeTouchesEnd(final int id, final float x, final float y);
+    private static native void nativeTouchesMove(final int[] ids, final float[] xs, final float[] ys);
+    private static native void nativeTouchesCancel(final int[] ids, final float[] xs, final float[] ys);
+    private static native boolean nativeKeyEvent(final int keyCode,boolean isPressed);
+    private static native void nativeRender();
+    private static native void nativeInit(final int width, final int height);
+    private static native void nativeOnContextLost(final boolean isWarmStart);
+    private static native void nativeOnSurfaceChanged(final int width, final int height);
+    private static native void nativeOnPause();
+    private static native void nativeOnResume();
+
+    public void handleActionDown(final int id, final float x, final float y) {
+        AxmolRenderer.nativeTouchesBegin(id, x, y);
+    }
+
+    public void handleActionUp(final int id, final float x, final float y) {
+        AxmolRenderer.nativeTouchesEnd(id, x, y);
+    }
+
+    public void handleActionCancel(final int[] ids, final float[] xs, final float[] ys) {
+        AxmolRenderer.nativeTouchesCancel(ids, xs, ys);
+    }
+
+    public void handleActionMove(final int[] ids, final float[] xs, final float[] ys) {
+        AxmolRenderer.nativeTouchesMove(ids, xs, ys);
+    }
+
+    public void handleKeyDown(final int keyCode) {
+        AxmolRenderer.nativeKeyEvent(keyCode, true);
+    }
+
+    public void handleKeyUp(final int keyCode) {
+        AxmolRenderer.nativeKeyEvent(keyCode, false);
+    }
+
+    public void handleOnPause() {
+        /**
+         * onPause may be invoked before onSurfaceCreated,
+         * and engine will be initialized correctly after
+         * onSurfaceCreated is invoked. Can not invoke any
+         * native method before onSurfaceCreated is invoked
+         */
+        if (!gNativeInitialized)
+            return;
+
+        AxmolRenderer.nativeOnPause();
+        gNativeIsPaused = true;
+    }
+
+    public void handleOnResume() {
+        if (gNativeIsPaused) {
+            AxmolRenderer.nativeOnResume();
+            gNativeIsPaused = false;
+        }
+    }
+
+    private static native void nativeInsertText(final String text);
+    private static native void nativeDeleteBackward(final int numChars);
+    private static native String nativeGetContentText();
+
+    public void handleInsertText(final String text) {
+        AxmolRenderer.nativeInsertText(text);
+    }
+
+    public void handleDeleteBackward(final int numChars) {
+        AxmolRenderer.nativeDeleteBackward(numChars);
+    }
+
+    public String getContentText() {
+        return AxmolRenderer.nativeGetContentText();
+    }
+
+    // ===========================================================
+    // Inner and Anonymous Classes
+    // ===========================================================
+}

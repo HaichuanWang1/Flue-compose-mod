@@ -12,9 +12,16 @@ import com.ailife.clox.cocos.LuaBridge
 import org.json.JSONObject
 
 /**
- * Simplified WatchfaceBridgeManager for Flue integration.
- * Pushes essential data (battery, time, system) to Lua.
- * Full bridge (weather, health, sensors) can be added later.
+ * Minimal bridge manager — only the data categories that drive rendering.
+ *
+ * Core (always pushed):
+ *   settings  → triggers watchfacePath load in Lua
+ *   battery   → common {bl} {bp} tags
+ *   system    → is24h for time formatting
+ *
+ * Deferred (disabled until core is proven working):
+ *   health_*, weather, sensor_*, calendar, storage, alarm,
+ *   network, connectivity, notification, location, timezones
  */
 class WatchfaceBridgeManager(private val context: Context) {
     companion object {
@@ -28,46 +35,107 @@ class WatchfaceBridgeManager(private val context: Context) {
     /** Called when Lua engine signals readiness (wf_lua_ready event). */
     var luaReadyCallback: (() -> Unit)? = null
 
+    /** Called when Lua finishes loading a watchface (wf_loaded event). */
+    var wfLoadedCallback: (() -> Unit)? = null
+
+    private val eventListener: (String, String) -> Unit = { event, _ ->
+        if (event == "wf_loaded") {
+            Log.i(TAG, "wf_loaded — watchface rendering started")
+            wfLoadedCallback?.invoke()
+        }
+    }
+
     fun start() {
         registerBatteryReceiver()
         LuaBridge.luaReadyHandler = {
-            Log.i(TAG, "Lua engine ready — watchfacePath will be pushed")
+            Log.i(TAG, "Lua engine ready — pushing core data")
             isLuaReady = true
             luaReadyCallback?.invoke()
-            // Also push battery and settings immediately
-            pushAll()
+            pushCore()
         }
-        LuaBridge.watchfaceActionHandler = { payload ->
-            Log.i(TAG, "Watchface action: $payload")
-        }
+        LuaBridge.addEventListner(eventListener)
+    }
+
+    /**
+     * Fast-path reattach: the Lua engine is already running (activity
+     * recreation / Compose recomposition that reuses the live GL view).
+     * Skip waiting for wf_lua_ready — it was already sent during the
+     * scene's onEnter and won't fire again. Push the path and core data
+     * immediately so the face reloads without a 2 s fallback delay.
+     */
+    fun reattach() {
+        Log.i(TAG, "reattach — engine already live, pushing path immediately")
+        isLuaReady = true
+        luaReadyCallback?.invoke()
+        pushCore()
     }
 
     fun stop() {
         unregisterBatteryReceiver()
         LuaBridge.luaReadyHandler = null
-        LuaBridge.watchfaceActionHandler = null
+        LuaBridge.removeEventListener(eventListener)
         isLuaReady = false
     }
 
-    /** Called when host activity pauses (screen off, another app launched). */
-    fun onHostPause() {
-        Log.i(TAG, "onHostPause — host is no longer visible")
+    fun onHostPause() { /* no-op for now */ }
+    fun onHostResume() { /* no-op for now */ }
+
+    // ── Core data push (rendering essentials only) ────────────────────────────
+
+    private fun pushCore() {
+        pushSettings()
+        pushBattery()
+        pushSystem()
     }
 
-    /** Called when host activity resumes. */
-    fun onHostResume() {
-        Log.i(TAG, "onHostResume — host is visible again")
+    fun setWatchfacePath(path: String) {
+        Log.i(TAG, "setWatchfacePath: $path")
+        sendToLua("settings", JSONObject().apply {
+            put("watchfacePath", path)
+            put("is24", DateFormat.is24HourFormat(context))
+        })
     }
+
+    private fun pushSettings() {
+        sendToLua("settings", JSONObject().apply {
+            put("is24", DateFormat.is24HourFormat(context))
+        })
+    }
+
+    private fun pushBattery() {
+        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) ?: 0
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        batteryLevel = if (scale > 0) level * 100 / scale else 0
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, 0) ?: 0
+        val temp = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+        val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
+
+        sendToLua("battery", JSONObject().apply {
+            put("level", batteryLevel)
+            put("status", status)
+            put("scale", 100)
+            put("plugged", plugged)
+            put("charging", status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                            status == BatteryManager.BATTERY_STATUS_FULL)
+            put("temperature", temp)
+            put("voltage", voltage)
+        })
+    }
+
+    private fun pushSystem() {
+        sendToLua("system", JSONObject().apply {
+            put("is24h", DateFormat.is24HourFormat(context))
+        })
+    }
+
+    // ── Battery receiver (live updates) ───────────────────────────────────────
 
     private fun registerBatteryReceiver() {
         batteryReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
-                val rawLevel = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                if (rawLevel >= 0 && scale > 0) {
-                    batteryLevel = (rawLevel * 100 / scale).coerceIn(0, 100)
-                    pushBattery()
-                }
+                pushBattery()
             }
         }
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
@@ -81,61 +149,14 @@ class WatchfaceBridgeManager(private val context: Context) {
         batteryReceiver = null
     }
 
-    private fun pushAll() {
-        pushBattery()
-        pushSystem()
-        pushSettings(DateFormat.is24HourFormat(context))
-    }
+    // ── Lua dispatch ──────────────────────────────────────────────────────────
 
-    fun pushBattery() {
-        queueLua("WatchfaceBridgeDispatch", JSONObject().apply {
-            put("category", "battery")
-            put("data", JSONObject().apply {
-                put("level", batteryLevel)
-                put("status", 2)
-                put("scale", 100)
-                put("plugged", 0)
-            })
-        }.toString())
-    }
-
-    private fun pushSystem() {
-        val dm = context.resources.displayMetrics
-        queueLua("WatchfaceBridgeDispatch", JSONObject().apply {
-            put("category", "system")
-            put("data", JSONObject().apply {
-                put("width", dm.widthPixels)
-                put("height", dm.heightPixels)
-                put("density", dm.density.toDouble())
-                put("densityDpi", dm.densityDpi)
-                put("brand", android.os.Build.BRAND)
-                put("model", android.os.Build.MODEL)
-                put("sdk", android.os.Build.VERSION.SDK_INT)
-                put("release", android.os.Build.VERSION.RELEASE)
-            })
-        }.toString())
-    }
-
-    fun pushSettings(is24Hour: Boolean, watchfacePath: String? = null) {
-        queueLua("WatchfaceBridgeDispatch", JSONObject().apply {
-            put("category", "settings")
-            put("data", JSONObject().apply {
-                put("is24", is24Hour)
-                if (watchfacePath != null) put("watchfacePath", watchfacePath)
-            })
-        }.toString())
-    }
-
-    fun setWatchfacePath(path: String) {
-        Log.i(TAG, "setWatchfacePath: $path")
+    private fun sendToLua(category: String, data: JSONObject) {
+        if (!isLuaReady) return
         val json = JSONObject().apply {
-            put("category", "settings")
-            put("data", JSONObject().apply {
-                put("watchfacePath", path)
-                put("is24", android.text.format.DateFormat.is24HourFormat(context))
-            })
+            put("category", category)
+            put("data", data)
         }.toString()
-        Log.i(TAG, "Pushing settings: $json")
         queueLua("WatchfaceBridgeDispatch", json)
     }
 

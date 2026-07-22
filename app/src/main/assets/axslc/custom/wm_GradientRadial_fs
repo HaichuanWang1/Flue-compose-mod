@@ -1,0 +1,28 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    highp vec3 u_1;
+    highp vec3 u_2;
+    highp float u_3;
+};
+
+uniform fs_ub _34;
+
+uniform mediump sampler2D u_tex0;
+
+varying highp vec2 v_texCoord;
+varying highp vec4 v_color;
+
+void main()
+{
+    highp vec4 color = texture2D(u_tex0, v_texCoord) * v_color;
+    highp float yNew = length(v_texCoord - vec2(0.5));
+    yNew /= (_34.u_3 / 100.0);
+    yNew = clamp(yNew, 0.0, 1.0);
+    highp vec3 mixed = mix(_34.u_1, _34.u_2, vec3(yNew));
+    gl_FragData[0] = vec4(mixed * color.w, color.w);
+}
+

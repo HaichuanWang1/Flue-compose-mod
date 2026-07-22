@@ -101,10 +101,16 @@ object JbWatchFaceStorage {
     }
 
     fun scan(context: Context): List<LunchWatchFaceDescriptor> {
+        fixBrokenImports(context)
+        migrateExternalToInternal(context)
         val results = mutableListOf<LunchWatchFaceDescriptor>()
         val seen = mutableSetOf<String>()
 
-        // Scan /sdcard/jbwatch/
+        // Scan /sdcard/jbwatch/ — faces still on external storage (migration
+        // may not have moved them if the copy failed). These paths can cause
+        // cc.FileUtils:isFileExist failures on Android 11+ scoped storage,
+        // so they are deprioritised in favour of the internal copies created
+        // by migrateExternalToInternal().
         val sdcard = android.os.Environment.getExternalStorageDirectory()
         val externalRoot = File(sdcard, "jbwatch")
         if (externalRoot.isDirectory) {
@@ -115,7 +121,8 @@ object JbWatchFaceStorage {
             }
         }
 
-        // Scan internal storage
+        // Scan internal storage — preferred: cc.FileUtils can always read
+        // from context.filesDir without scoped-storage restrictions.
         val internalRoot = File(context.filesDir, ROOT_FOLDER)
         if (internalRoot.isDirectory) {
             internalRoot.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
@@ -126,6 +133,71 @@ object JbWatchFaceStorage {
         }
 
         return results.sortedBy { it.displayName.lowercase(Locale.ROOT) }
+    }
+
+    /**
+     * Copy watchfaces from /sdcard/jbwatch/ to internal storage so that
+     * cc.FileUtils:isFileExist() can reliably find watch.xml on Android 11+
+     * (scoped storage blocks external-path access from native code).
+     * Already-migrated faces (same ID exists internally) are skipped.
+     */
+    private fun migrateExternalToInternal(context: Context) {
+        val sdcard = android.os.Environment.getExternalStorageDirectory()
+        val externalRoot = File(sdcard, "jbwatch")
+        if (!externalRoot.isDirectory) return
+
+        val internalRoot = File(context.filesDir, ROOT_FOLDER).apply { mkdirs() }
+
+        externalRoot.listFiles()?.filter { it.isDirectory }?.forEach { extDir ->
+            val hasWatch = File(extDir, "watch.xml").isFile || File(extDir, "watch.pxml").isFile
+            if (!hasWatch) return@forEach
+
+            val metadata = runCatching { parseMetadata(extDir) }.getOrNull() ?: return@forEach
+            val targetDir = File(internalRoot, sanitizeId(metadata.id))
+
+            // Skip if already migrated
+            if (targetDir.isDirectory && (File(targetDir, "watch.xml").isFile || File(targetDir, "watch.pxml").isFile)) {
+                return@forEach
+            }
+
+            try {
+                targetDir.deleteRecursively()
+                targetDir.mkdirs()
+                extDir.copyRecursively(targetDir, overwrite = true)
+                Log.i(TAG, "Migrated '${metadata.title}' from external → internal: ${targetDir.absolutePath}")
+            } catch (e: Exception) {
+                Log.w(TAG, "Migration failed for '${metadata.title}': ${e.message}")
+                targetDir.deleteRecursively()
+            }
+        }
+    }
+
+    /**
+     * Fix watchfaces imported by old code where sourceDirPath pointed to a
+     * temporary directory (jbwatch_tmp_*) that was later deleted.
+     * Renames jbwatch_tmp_* dirs to their watch.xml title, deletes broken ones.
+     */
+    private fun fixBrokenImports(context: Context) {
+        val root = File(context.filesDir, ROOT_FOLDER)
+        if (!root.isDirectory) return
+        root.listFiles()?.filter { it.isDirectory && it.name.startsWith("jbwatch_tmp_") }?.forEach { dir ->
+            val hasWatchXml = File(dir, "watch.xml").isFile || File(dir, "watch.pxml").isFile
+            if (!hasWatchXml) {
+                Log.w(TAG, "Removing broken temp dir: ${dir.name}")
+                dir.deleteRecursively()
+                return@forEach
+            }
+            // Use watch.xml name attribute as the new directory name
+            val metadata = runCatching { parseMetadata(dir) }.getOrNull()
+            val title = metadata?.title?.takeIf { it.isNotBlank() && it != dir.name }
+            val newName = sanitizeId(title ?: dir.name.replace("jbwatch_tmp_", "watchface_"))
+            if (newName == dir.name) return@forEach  // nothing to fix
+            val newDir = File(root, newName)
+            if (newDir.exists() && newDir != dir) newDir.deleteRecursively()
+            if (dir.renameTo(newDir)) {
+                Log.i(TAG, "Fixed broken import: ${dir.name} → $newName")
+            }
+        }
     }
 
     private fun parseMetadata(rootDir: File): JbWatchMetadata {

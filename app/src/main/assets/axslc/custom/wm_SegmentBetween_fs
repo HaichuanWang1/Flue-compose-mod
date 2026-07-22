@@ -1,0 +1,101 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    highp float u_1;
+    highp float u_2;
+    highp float u_3;
+    highp float u_4;
+};
+
+uniform fs_ub _72;
+
+uniform mediump sampler2D u_tex0;
+
+varying highp vec2 v_texCoord;
+varying highp vec4 v_color;
+
+bool isBetween(highp float number_, highp float min_, highp float max_)
+{
+    return (number_ >= min_) && (number_ <= max_);
+}
+
+void main()
+{
+    highp vec4 color = texture2D(u_tex0, v_texCoord) * v_color;
+    highp vec2 centerPos = vec2(0.5);
+    highp float angle = (atan(v_texCoord.x - centerPos.x, centerPos.y - v_texCoord.y) * 180.0) / 3.1415927410125732421875;
+    bool _67 = angle < 0.0;
+    bool _79;
+    if (_67)
+    {
+        _79 = _72.u_1 > 0.0;
+    }
+    else
+    {
+        _79 = _67;
+    }
+    if (_79)
+    {
+        angle += 360.0;
+    }
+    highp float param = angle;
+    highp float param_1 = _72.u_1;
+    highp float param_2 = _72.u_2;
+    bool _94 = isBetween(param, param_1, param_2);
+    bool _113;
+    if (!_94)
+    {
+        bool _102 = _72.u_2 < _72.u_1;
+        bool _112;
+        if (_102)
+        {
+            highp float param_3 = angle;
+            highp float param_4 = _72.u_1;
+            highp float param_5 = 360.0;
+            _112 = isBetween(param_3, param_4, param_5);
+        }
+        else
+        {
+            _112 = _102;
+        }
+        _113 = _112;
+    }
+    else
+    {
+        _113 = _94;
+    }
+    bool _132;
+    if (!_113)
+    {
+        bool _121 = _72.u_2 < _72.u_1;
+        bool _131;
+        if (_121)
+        {
+            highp float param_6 = angle;
+            highp float param_7 = 0.0;
+            highp float param_8 = _72.u_2;
+            _131 = isBetween(param_6, param_7, param_8);
+        }
+        else
+        {
+            _131 = _121;
+        }
+        _132 = _131;
+    }
+    else
+    {
+        _132 = _113;
+    }
+    if (_132)
+    {
+        gl_FragData[0] = color * (_72.u_3 / 100.0);
+    }
+    else
+    {
+        gl_FragData[0] = color * (_72.u_4 / 100.0);
+    }
+}
+

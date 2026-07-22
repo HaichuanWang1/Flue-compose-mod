@@ -1,0 +1,61 @@
+#version 100
+
+struct vs_ub
+{
+    vec3 u_DirLightSourceDirection[1];
+    vec3 u_SpotLightSourceDirection[1];
+    vec3 u_PointLightSourcePosition[1];
+    vec3 u_SpotLightSourcePosition[1];
+    mat4 u_MVPMatrix;
+    mat4 u_MVMatrix;
+    mat4 u_PMatrix;
+    mat3 u_NormalMatrix;
+};
+
+uniform vs_ub _21;
+
+attribute vec4 a_position;
+attribute vec3 a_tangent;
+attribute vec3 a_binormal;
+attribute vec3 a_normal;
+varying vec3 v_dirLightDirection[1];
+varying vec3 v_vertexToPointLightDirection[1];
+varying vec3 v_vertexToSpotLightDirection[1];
+varying vec3 v_spotLightDirection[1];
+varying vec2 v_texCoord;
+attribute vec2 a_texCoord;
+
+void main()
+{
+    vec4 ePosition = _21.u_MVMatrix * a_position;
+    vec3 eTangent = normalize(_21.u_NormalMatrix * a_tangent);
+    vec3 eBinormal = normalize(_21.u_NormalMatrix * a_binormal);
+    vec3 eNormal = normalize(_21.u_NormalMatrix * a_normal);
+    for (int i = 0; i < 1; i++)
+    {
+        v_dirLightDirection[i].x = dot(eTangent, _21.u_DirLightSourceDirection[i]);
+        v_dirLightDirection[i].y = dot(eBinormal, _21.u_DirLightSourceDirection[i]);
+        v_dirLightDirection[i].z = dot(eNormal, _21.u_DirLightSourceDirection[i]);
+    }
+    for (int i_1 = 0; i_1 < 1; i_1++)
+    {
+        vec3 pointLightDir = _21.u_PointLightSourcePosition[i_1] - ePosition.xyz;
+        v_vertexToPointLightDirection[i_1].x = dot(eTangent, pointLightDir);
+        v_vertexToPointLightDirection[i_1].y = dot(eBinormal, pointLightDir);
+        v_vertexToPointLightDirection[i_1].z = dot(eNormal, pointLightDir);
+    }
+    for (int i_2 = 0; i_2 < 1; i_2++)
+    {
+        vec3 spotLightDir = _21.u_SpotLightSourcePosition[i_2] - ePosition.xyz;
+        v_vertexToSpotLightDirection[i_2].x = dot(eTangent, spotLightDir);
+        v_vertexToSpotLightDirection[i_2].y = dot(eBinormal, spotLightDir);
+        v_vertexToSpotLightDirection[i_2].z = dot(eNormal, spotLightDir);
+        v_spotLightDirection[i_2].x = dot(eTangent, _21.u_SpotLightSourceDirection[i_2]);
+        v_spotLightDirection[i_2].y = dot(eBinormal, _21.u_SpotLightSourceDirection[i_2]);
+        v_spotLightDirection[i_2].z = dot(eNormal, _21.u_SpotLightSourceDirection[i_2]);
+    }
+    v_texCoord = a_texCoord;
+    v_texCoord.y = 1.0 - v_texCoord.y;
+    gl_Position = _21.u_PMatrix * ePosition;
+}
+
