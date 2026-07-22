@@ -352,10 +352,15 @@ object JbWatchFaceStorage {
     private fun outFileForName(name: String, targetRoot: File): File {
         val clean = name.replace(" [via getEntry]", "")
             .replace('\\', '/')
-        // Zip Slip guard: reject ".." components that could escape targetRoot
-        if (clean.contains("/../") || clean.startsWith("../") || clean == "..") {
-            throw SecurityException("Rejected unsafe ZIP entry: $name")
+        val outFile = File(targetRoot, clean)
+        // Zip Slip guard: after resolving ".." the path must stay inside targetRoot.
+        // canonicalPath normalises "a/../b" → "a/b", so an escape shows up as a
+        // prefix mismatch.  This covers foo/../../X, .., ../.., and all variants.
+        val targetCanon = targetRoot.canonicalPath
+        val outCanon    = outFile.canonicalPath
+        if (!outCanon.startsWith(targetCanon + File.separator) && outCanon != targetCanon) {
+            throw SecurityException("Rejected unsafe ZIP entry: $name (escapes $targetCanon)")
         }
-        return File(targetRoot, clean)
+        return outFile
     }
 }
