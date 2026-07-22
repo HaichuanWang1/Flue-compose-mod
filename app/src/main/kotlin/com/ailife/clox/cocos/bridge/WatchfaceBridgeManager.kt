@@ -9,33 +9,28 @@ import android.text.format.DateFormat
 import android.util.Log
 import com.ailife.clox.cocos.CocosManager
 import com.ailife.clox.cocos.LuaBridge
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 /**
- * Central coordinator for the Lua ↔ Android data bridge.
- * Pushes battery, system, health, weather, sensor, calendar, storage, and alarm data.
+ * Minimal bridge manager — only the data categories that drive rendering.
+ *
+ * Core (always pushed):
+ *   settings  → triggers watchfacePath load in Lua
+ *   battery   → common {bl} {bp} tags
+ *   system    → is24h for time formatting
+ *
+ * Deferred (disabled until core is proven working):
+ *   health_*, weather, sensor_*, calendar, storage, alarm,
+ *   network, connectivity, notification, location, timezones
  */
 class WatchfaceBridgeManager(private val context: Context) {
     companion object {
         private const val TAG = "WatchfaceBridgeMgr"
     }
 
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val sensorHelper = SensorHelper(context)
-    private val healthHelper = HealthHelper(context)
-
     private var batteryLevel = 100
     private var batteryReceiver: BroadcastReceiver? = null
     private var isLuaReady = false
-    private var hostPaused = false
 
     /** Called when Lua engine signals readiness (wf_lua_ready event). */
     var luaReadyCallback: (() -> Unit)? = null
@@ -43,158 +38,104 @@ class WatchfaceBridgeManager(private val context: Context) {
     /** Called when Lua finishes loading a watchface (wf_loaded event). */
     var wfLoadedCallback: (() -> Unit)? = null
 
-    private val eventListener: (String, String) -> Unit = { event, payload ->
-        when (event) {
-            "wf_loaded" -> {
-                Log.i(TAG, "wf_loaded — watchface rendering started")
-                wfLoadedCallback?.invoke()
-            }
-            "wf_action" -> handleAction(payload)
+    private val eventListener: (String, String) -> Unit = { event, _ ->
+        if (event == "wf_loaded") {
+            Log.i(TAG, "wf_loaded — watchface rendering started")
+            wfLoadedCallback?.invoke()
         }
     }
 
     fun start() {
         registerBatteryReceiver()
         LuaBridge.luaReadyHandler = {
-            Log.i(TAG, "Lua engine ready — pushing all data")
+            Log.i(TAG, "Lua engine ready — pushing core data")
             isLuaReady = true
             luaReadyCallback?.invoke()
-            pushAll()
-            startPeriodicUpdates()
+            pushCore()
         }
-        LuaBridge.watchfaceActionHandler = { payload -> handleAction(payload) }
         LuaBridge.addEventListner(eventListener)
+    }
 
-        // Start health (step counter + heart rate)
-        healthHelper.startSteps { data ->
-            sendToLua("health_steps", data)
-        }
-        healthHelper.startHeartRate { data ->
-            sendToLua("health_heartRate", data)
-        }
+    /**
+     * Fast-path reattach: the Lua engine is already running (activity
+     * recreation / Compose recomposition that reuses the live GL view).
+     * Skip waiting for wf_lua_ready — it was already sent during the
+     * scene's onEnter and won't fire again. Push the path and core data
+     * immediately so the face reloads without a 2 s fallback delay.
+     */
+    fun reattach() {
+        Log.i(TAG, "reattach — engine already live, pushing path immediately")
+        isLuaReady = true
+        luaReadyCallback?.invoke()
+        pushCore()
     }
 
     fun stop() {
-        scope.cancel()
         unregisterBatteryReceiver()
         LuaBridge.luaReadyHandler = null
-        LuaBridge.watchfaceActionHandler = null
         LuaBridge.removeEventListener(eventListener)
-        sensorHelper.stop()
-        healthHelper.stop()
         isLuaReady = false
     }
 
-    fun onHostPause() {
-        hostPaused = true
-        sensorHelper.suspend()
-    }
+    fun onHostPause() { /* no-op for now */ }
+    fun onHostResume() { /* no-op for now */ }
 
-    fun onHostResume() {
-        hostPaused = false
-        sensorHelper.resume()
-        pushAll()
-    }
+    // ── Core data push (rendering essentials only) ────────────────────────────
 
-    // ── Push all data ─────────────────────────────────────────────────────────
-
-    private fun pushAll() {
+    private fun pushCore() {
+        pushSettings()
         pushBattery()
         pushSystem()
-        pushSettings(DateFormat.is24HourFormat(context))
-        healthHelper.pushSteps()
-        healthHelper.pushHeartRate()
-        sendToLua("storage", LiveDataHelper.storageJson(context))
-        sendToLua("alarm", LiveDataHelper.alarmJson(context))
-        sendToLua("calendar", CalendarHelper.getEvents(context))
-
-        // Weather — use last known location or default
-        scope.launch {
-            val loc = getLastKnownLocation()
-            if (loc != null) {
-                val weather = WeatherRepository.fetchWeather(context, loc.first, loc.second)
-                if (weather != null) sendToLua("weather", weather)
-            }
-        }
     }
 
-    private fun startPeriodicUpdates() {
-        // Storage + alarm every 5 seconds
-        scope.launch {
-            while (isActive) {
-                delay(5_000)
-                if (hostPaused) continue
-                val storage = withContext(Dispatchers.IO) { LiveDataHelper.storageJson(context) }
-                val alarm = withContext(Dispatchers.IO) { LiveDataHelper.alarmJson(context) }
-                sendToLua("storage", storage)
-                sendToLua("alarm", alarm)
-            }
-        }
-
-        // Weather every 10 minutes
-        scope.launch {
-            while (isActive) {
-                delay(600_000)
-                if (hostPaused) continue
-                val loc = getLastKnownLocation() ?: continue
-                val weather = WeatherRepository.fetchWeather(context, loc.first, loc.second)
-                if (weather != null) sendToLua("weather", weather)
-            }
-        }
+    fun setWatchfacePath(path: String) {
+        Log.i(TAG, "setWatchfacePath: $path")
+        sendToLua("settings", JSONObject().apply {
+            put("watchfacePath", path)
+            put("is24", DateFormat.is24HourFormat(context))
+        })
     }
 
-    // ── Action handler (from Lua) ─────────────────────────────────────────────
-
-    private fun handleAction(payload: String) {
-        try {
-            val json = JSONObject(payload)
-            val action = json.optString("action")
-            when (action) {
-                "setSensorEnabled" -> {
-                    val sensor = json.optString("sensor")
-                    val enabled = json.optBoolean("enabled", false)
-                    Log.i(TAG, "setSensorEnabled: $sensor = $enabled")
-                    sensorHelper.setEnabled(sensor, enabled) { name, data ->
-                        sendToLua("sensor_$name", data)
-                    }
-                }
-                "setHealthEnabled" -> {
-                    val metric = json.optString("metric")
-                    val enabled = json.optBoolean("enabled", false)
-                    Log.i(TAG, "setHealthEnabled: $metric = $enabled")
-                    when (metric) {
-                        "heartRate" -> {
-                            if (enabled) healthHelper.measureHeartRate()
-                            else healthHelper.stopHeartRate()
-                        }
-                        "steps" -> {
-                            // Steps are always-on via TYPE_STEP_COUNTER, no action needed
-                        }
-                    }
-                }
-                "measureHeartRate" -> {
-                    healthHelper.measureHeartRate()
-                }
-                "stopHeartRate" -> {
-                    healthHelper.stopHeartRate()
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "handleAction failed: ${e.message}")
-        }
+    private fun pushSettings() {
+        sendToLua("settings", JSONObject().apply {
+            put("is24", DateFormat.is24HourFormat(context))
+        })
     }
 
-    // ── Battery ───────────────────────────────────────────────────────────────
+    private fun pushBattery() {
+        val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) ?: 0
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        batteryLevel = if (scale > 0) level * 100 / scale else 0
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, 0) ?: 0
+        val temp = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+        val voltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
+
+        sendToLua("battery", JSONObject().apply {
+            put("level", batteryLevel)
+            put("status", status)
+            put("scale", 100)
+            put("plugged", plugged)
+            put("charging", status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                            status == BatteryManager.BATTERY_STATUS_FULL)
+            put("temperature", temp)
+            put("voltage", voltage)
+        })
+    }
+
+    private fun pushSystem() {
+        sendToLua("system", JSONObject().apply {
+            put("is24h", DateFormat.is24HourFormat(context))
+        })
+    }
+
+    // ── Battery receiver (live updates) ───────────────────────────────────────
 
     private fun registerBatteryReceiver() {
         batteryReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
-                val rawLevel = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                if (rawLevel >= 0 && scale > 0) {
-                    batteryLevel = (rawLevel * 100 / scale).coerceIn(0, 100)
-                    pushBattery()
-                }
+                pushBattery()
             }
         }
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
@@ -208,53 +149,9 @@ class WatchfaceBridgeManager(private val context: Context) {
         batteryReceiver = null
     }
 
-    fun pushBattery() {
-        sendToLua("battery", LiveDataHelper.batteryJson(context))
-    }
-
-    private fun pushSystem() {
-        sendToLua("system", LiveDataHelper.systemJson(context))
-    }
-
-    fun pushSettings(is24Hour: Boolean, watchfacePath: String? = null) {
-        sendToLua("settings", JSONObject().apply {
-            put("is24", is24Hour)
-            if (watchfacePath != null) put("watchfacePath", watchfacePath)
-        })
-    }
-
-    fun setWatchfacePath(path: String) {
-        Log.i(TAG, "setWatchfacePath: $path")
-        sendToLua("settings", JSONObject().apply {
-            put("watchfacePath", path)
-            put("is24", DateFormat.is24HourFormat(context))
-        })
-    }
-
-    // ── Location helper ───────────────────────────────────────────────────────
-
-    private fun getLastKnownLocation(): Pair<Double, Double>? {
-        return try {
-            val lm = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-            val providers = listOf(
-                android.location.LocationManager.GPS_PROVIDER,
-                android.location.LocationManager.NETWORK_PROVIDER,
-                android.location.LocationManager.PASSIVE_PROVIDER
-            )
-            for (provider in providers) {
-                val loc = lm.getLastKnownLocation(provider)
-                if (loc != null) return loc.latitude to loc.longitude
-            }
-            // Default: Beijing
-            39.9042 to 116.4074
-        } catch (_: Exception) {
-            39.9042 to 116.4074
-        }
-    }
-
     // ── Lua dispatch ──────────────────────────────────────────────────────────
 
-    private fun sendToLua(category: String, data: JSONObject, kick: Boolean = true) {
+    private fun sendToLua(category: String, data: JSONObject) {
         if (!isLuaReady) return
         val json = JSONObject().apply {
             put("category", category)

@@ -3,6 +3,7 @@ package com.ailife.clox.cocos.bridge
 import android.app.ActivityManager
 import android.app.AlarmManager
 import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
 import android.media.AudioManager
