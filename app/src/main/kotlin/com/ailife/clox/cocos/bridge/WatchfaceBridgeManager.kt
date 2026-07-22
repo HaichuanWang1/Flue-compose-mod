@@ -33,6 +33,7 @@ class WatchfaceBridgeManager(private val context: Context) {
     private var batteryLevel = 100
     private var batteryReceiver: BroadcastReceiver? = null
     private var isLuaReady = false
+    private var healthHelper: HealthHelper? = null
     private val handler = Handler(Looper.getMainLooper())
     private val periodicRunnable = object : Runnable {
         override fun run() {
@@ -58,6 +59,7 @@ class WatchfaceBridgeManager(private val context: Context) {
 
     fun start() {
         registerBatteryReceiver()
+        startHealth()
         LuaBridge.luaReadyHandler = {
             Log.i(TAG, "Lua engine ready — pushing all data")
             isLuaReady = true
@@ -83,6 +85,7 @@ class WatchfaceBridgeManager(private val context: Context) {
     fun stop() {
         handler.removeCallbacks(periodicRunnable)
         unregisterBatteryReceiver()
+        stopHealth()
         LuaBridge.luaReadyHandler = null
         LuaBridge.removeEventListener(eventListener)
         isLuaReady = false
@@ -154,6 +157,26 @@ class WatchfaceBridgeManager(private val context: Context) {
 
     private fun pushAlarm() {
         sendToLua("alarm", AlarmHelper.getInfo(context))
+    }
+
+    // ── Health (steps + heart rate via SensorManager) ─────────────────────────
+
+    private fun startHealth() {
+        val helper = HealthHelper(context)
+        healthHelper = helper
+        helper.startSteps { stepsJson ->
+            sendToLua("health_steps", stepsJson)
+        }
+        helper.startHeartRate { hrJson ->
+            sendToLua("health_heartRate", hrJson)
+        }
+        // Trigger an initial HR measurement
+        helper.measureHeartRate()
+    }
+
+    private fun stopHealth() {
+        healthHelper?.stopHeartRate()
+        healthHelper = null
     }
 
     // ── Battery receiver (live updates) ───────────────────────────────────────
