@@ -1,0 +1,22 @@
+#version 100
+
+struct vs_ub
+{
+    mat4 u_MVPMatrix;
+};
+
+uniform vs_ub _27;
+
+varying vec2 v_texCoord;
+attribute vec2 a_texCoord;
+varying vec4 v_color;
+attribute vec4 a_color;
+attribute vec2 a_position;
+
+void main()
+{
+    v_texCoord = a_texCoord;
+    v_color = a_color;
+    gl_Position = _27.u_MVPMatrix * vec4(a_position, 0.0, 1.0);
+}
+

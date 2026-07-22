@@ -1,0 +1,26 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    highp float u_alpha_value;
+};
+
+uniform fs_ub _27;
+
+uniform mediump sampler2D u_tex0;
+
+varying highp vec2 v_texCoord;
+varying highp vec4 v_color;
+
+void main()
+{
+    highp vec4 texColor = texture2D(u_tex0, v_texCoord);
+    if (texColor.w <= _27.u_alpha_value)
+    {
+        discard;
+    }
+    gl_FragData[0] = texColor * v_color;
+}
+

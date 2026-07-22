@@ -1,0 +1,124 @@
+#version 100
+
+struct vs_ub
+{
+    vec3 u_DirLightSourceDirection[1];
+    vec3 u_SpotLightSourceDirection[1];
+    vec3 u_PointLightSourcePosition[1];
+    vec3 u_SpotLightSourcePosition[1];
+    vec4 u_matrixPalette[180];
+    mat4 u_MVMatrix;
+    mat3 u_NormalMatrix;
+    mat4 u_PMatrix;
+};
+
+uniform vs_ub _48;
+
+attribute vec4 a_blendWeight;
+attribute vec4 a_blendIndex;
+attribute vec3 a_position;
+attribute vec3 a_normal;
+attribute vec3 a_tangent;
+attribute vec3 a_binormal;
+varying vec3 v_dirLightDirection[1];
+varying vec3 v_vertexToPointLightDirection[1];
+varying vec3 v_vertexToSpotLightDirection[1];
+varying vec3 v_spotLightDirection[1];
+varying vec2 v_texCoord;
+attribute vec2 a_texCoord;
+
+void getPositionAndNormal(inout vec4 position, inout vec3 normal, inout vec3 tangent, inout vec3 binormal)
+{
+    float blendWeight = a_blendWeight.x;
+    int matrixIndex = int(a_blendIndex.x) * 3;
+    vec4 matrixPalette1 = _48.u_matrixPalette[matrixIndex] * blendWeight;
+    vec4 matrixPalette2 = _48.u_matrixPalette[matrixIndex + 1] * blendWeight;
+    vec4 matrixPalette3 = _48.u_matrixPalette[matrixIndex + 2] * blendWeight;
+    blendWeight = a_blendWeight.y;
+    if (blendWeight > 0.0)
+    {
+        matrixIndex = int(a_blendIndex.y) * 3;
+        matrixPalette1 += (_48.u_matrixPalette[matrixIndex] * blendWeight);
+        matrixPalette2 += (_48.u_matrixPalette[matrixIndex + 1] * blendWeight);
+        matrixPalette3 += (_48.u_matrixPalette[matrixIndex + 2] * blendWeight);
+        blendWeight = a_blendWeight.z;
+        if (blendWeight > 0.0)
+        {
+            matrixIndex = int(a_blendIndex.z) * 3;
+            matrixPalette1 += (_48.u_matrixPalette[matrixIndex] * blendWeight);
+            matrixPalette2 += (_48.u_matrixPalette[matrixIndex + 1] * blendWeight);
+            matrixPalette3 += (_48.u_matrixPalette[matrixIndex + 2] * blendWeight);
+            blendWeight = a_blendWeight.w;
+            if (blendWeight > 0.0)
+            {
+                matrixIndex = int(a_blendIndex.w) * 3;
+                matrixPalette1 += (_48.u_matrixPalette[matrixIndex] * blendWeight);
+                matrixPalette2 += (_48.u_matrixPalette[matrixIndex + 1] * blendWeight);
+                matrixPalette3 += (_48.u_matrixPalette[matrixIndex + 2] * blendWeight);
+            }
+        }
+    }
+    vec4 p = vec4(a_position, 1.0);
+    position.x = dot(p, matrixPalette1);
+    position.y = dot(p, matrixPalette2);
+    position.z = dot(p, matrixPalette3);
+    position.w = p.w;
+    vec4 n = vec4(a_normal, 0.0);
+    normal.x = dot(n, matrixPalette1);
+    normal.y = dot(n, matrixPalette2);
+    normal.z = dot(n, matrixPalette3);
+    vec4 t = vec4(a_tangent, 0.0);
+    tangent.x = dot(t, matrixPalette1);
+    tangent.y = dot(t, matrixPalette2);
+    tangent.z = dot(t, matrixPalette3);
+    vec4 b = vec4(a_binormal, 0.0);
+    binormal.x = dot(b, matrixPalette1);
+    binormal.y = dot(b, matrixPalette2);
+    binormal.z = dot(b, matrixPalette3);
+}
+
+void main()
+{
+    vec4 param;
+    vec3 param_1;
+    vec3 param_2;
+    vec3 param_3;
+    getPositionAndNormal(param, param_1, param_2, param_3);
+    vec4 position = param;
+    vec3 normal = param_1;
+    vec3 tangent = param_2;
+    vec3 binormal = param_3;
+    vec4 ePosition = _48.u_MVMatrix * position;
+    vec3 eTangent = normalize(_48.u_NormalMatrix * tangent);
+    vec3 eBinormal = normalize(_48.u_NormalMatrix * binormal);
+    vec3 eNormal = normalize(_48.u_NormalMatrix * normal);
+    for (int i = 0; i < 1; i++)
+    {
+        vec3 pointD = _48.u_DirLightSourceDirection[i];
+        v_dirLightDirection[i].x = dot(eTangent, pointD);
+        v_dirLightDirection[i].y = dot(eBinormal, pointD);
+        v_dirLightDirection[i].z = dot(eNormal, pointD);
+    }
+    for (int i_1 = 0; i_1 < 1; i_1++)
+    {
+        vec3 pointLightDir = _48.u_PointLightSourcePosition[i_1] - ePosition.xyz;
+        v_vertexToPointLightDirection[i_1].x = dot(eTangent, pointLightDir);
+        v_vertexToPointLightDirection[i_1].y = dot(eBinormal, pointLightDir);
+        v_vertexToPointLightDirection[i_1].z = dot(eNormal, pointLightDir);
+    }
+    for (int i_2 = 0; i_2 < 1; i_2++)
+    {
+        vec3 spotLightDir = _48.u_SpotLightSourcePosition[i_2] - ePosition.xyz;
+        v_vertexToSpotLightDirection[i_2].x = dot(eTangent, spotLightDir);
+        v_vertexToSpotLightDirection[i_2].y = dot(eBinormal, spotLightDir);
+        v_vertexToSpotLightDirection[i_2].z = dot(eNormal, spotLightDir);
+        vec3 pointP = _48.u_SpotLightSourceDirection[i_2];
+        v_spotLightDirection[i_2].x = dot(eTangent, pointP);
+        v_spotLightDirection[i_2].y = dot(eBinormal, pointP);
+        v_spotLightDirection[i_2].z = dot(eNormal, pointP);
+    }
+    v_texCoord = a_texCoord;
+    v_texCoord.y = 1.0 - v_texCoord.y;
+    gl_Position = _48.u_PMatrix * ePosition;
+}
+

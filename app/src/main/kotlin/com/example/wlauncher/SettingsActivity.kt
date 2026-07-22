@@ -159,7 +159,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private const val ABOUT_VERSION = "beta1.5"
+private const val ABOUT_VERSION = "beta1.6"
 private const val COMMUNITY_GROUP_NUMBER = "1097162313"
 private const val AUTHOR_QQ_NUMBER = "3513903055"
 private const val AUTHOR_BILIBILI_URL = "https://m.bilibili.com/space/1609437970"

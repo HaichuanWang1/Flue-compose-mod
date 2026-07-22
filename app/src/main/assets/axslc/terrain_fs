@@ -1,0 +1,49 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    int u_has_alpha;
+    int u_has_light_map;
+    highp float u_detailSize[4];
+    highp vec3 u_lightDir;
+};
+
+uniform fs_ub _14;
+
+uniform mediump sampler2D u_lightMap;
+uniform mediump sampler2D u_tex0;
+uniform mediump sampler2D u_alphaMap;
+uniform mediump sampler2D u_tex1;
+uniform mediump sampler2D u_tex2;
+uniform mediump sampler2D u_tex3;
+
+varying highp vec2 v_texCoord;
+varying highp vec3 v_normal;
+
+void main()
+{
+    highp vec4 lightColor;
+    if (_14.u_has_light_map <= 0)
+    {
+        lightColor = vec4(1.0);
+    }
+    else
+    {
+        lightColor = texture2D(u_lightMap, v_texCoord);
+    }
+    highp float lightFactor = dot(-_14.u_lightDir, v_normal);
+    if (_14.u_has_alpha <= 0)
+    {
+        gl_FragData[0] = (texture2D(u_tex0, v_texCoord) * lightColor) * lightFactor;
+    }
+    else
+    {
+        highp vec4 blendFactor = texture2D(u_alphaMap, v_texCoord);
+        highp vec4 color = vec4(0.0);
+        color = (((texture2D(u_tex0, v_texCoord * _14.u_detailSize[0]) * blendFactor.x) + (texture2D(u_tex1, v_texCoord * _14.u_detailSize[1]) * blendFactor.y)) + (texture2D(u_tex2, v_texCoord * _14.u_detailSize[2]) * blendFactor.z)) + (texture2D(u_tex3, v_texCoord * _14.u_detailSize[3]) * (1.0 - blendFactor.w));
+        gl_FragData[0] = vec4((color.xyz * lightColor.xyz) * lightFactor, 1.0);
+    }
+}
+

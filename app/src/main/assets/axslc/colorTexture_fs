@@ -1,0 +1,20 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    highp vec4 u_color;
+};
+
+uniform fs_ub _22;
+
+uniform mediump sampler2D u_tex0;
+
+varying highp vec2 v_texCoord;
+
+void main()
+{
+    gl_FragData[0] = texture2D(u_tex0, v_texCoord) * _22.u_color;
+}
+

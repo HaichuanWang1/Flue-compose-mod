@@ -1,0 +1,20 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    highp vec4 u_color;
+};
+
+uniform fs_ub _22;
+
+uniform mediump samplerCube u_Env;
+
+varying highp vec3 v_reflect;
+
+void main()
+{
+    gl_FragData[0] = textureCube(u_Env, v_reflect) * _22.u_color;
+}
+

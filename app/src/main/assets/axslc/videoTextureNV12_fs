@@ -1,0 +1,41 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    highp mat4 colorTransform;
+};
+
+uniform fs_ub _91;
+
+uniform mediump sampler2D u_tex0;
+uniform mediump sampler2D u_tex1;
+
+varying highp vec2 v_texCoord;
+varying highp vec4 v_color;
+
+highp vec3 trasnformYUV(inout highp vec3 YUV, highp mat4 colorTransform)
+{
+    YUV -= vec3(colorTransform[0].w, colorTransform[1].w, colorTransform[2].w);
+    return mat3(vec3(colorTransform[0].xyz), vec3(colorTransform[1].xyz), vec3(colorTransform[2].xyz)) * YUV;
+}
+
+void main()
+{
+    highp vec3 YUV;
+    YUV.x = texture2D(u_tex0, v_texCoord).x;
+    vec2 _81 = texture2D(u_tex1, v_texCoord).xw;
+    YUV.y = _81.x;
+    YUV.z = _81.y;
+    highp vec3 param = YUV;
+    highp mat4 param_1 = _91.colorTransform;
+    highp vec3 _98 = trasnformYUV(param, param_1);
+    highp vec4 OutColor;
+    OutColor.x = _98.x;
+    OutColor.y = _98.y;
+    OutColor.z = _98.z;
+    OutColor.w = 1.0;
+    gl_FragData[0] = v_color * OutColor;
+}
+

@@ -1,0 +1,64 @@
+#version 100
+
+struct vs_ub
+{
+    vec4 u_matrixPalette[180];
+    mat4 u_MVPMatrix;
+};
+
+uniform vs_ub _36;
+
+attribute vec4 a_blendWeight;
+attribute vec4 a_blendIndex;
+attribute vec3 a_position;
+varying vec2 v_texCoord;
+attribute vec2 a_texCoord;
+
+vec4 getPosition()
+{
+    float blendWeight = a_blendWeight.x;
+    int matrixIndex = int(a_blendIndex.x) * 3;
+    vec4 matrixPalette1 = _36.u_matrixPalette[matrixIndex] * blendWeight;
+    vec4 matrixPalette2 = _36.u_matrixPalette[matrixIndex + 1] * blendWeight;
+    vec4 matrixPalette3 = _36.u_matrixPalette[matrixIndex + 2] * blendWeight;
+    blendWeight = a_blendWeight.y;
+    if (blendWeight > 0.0)
+    {
+        matrixIndex = int(a_blendIndex.y) * 3;
+        matrixPalette1 += (_36.u_matrixPalette[matrixIndex] * blendWeight);
+        matrixPalette2 += (_36.u_matrixPalette[matrixIndex + 1] * blendWeight);
+        matrixPalette3 += (_36.u_matrixPalette[matrixIndex + 2] * blendWeight);
+        blendWeight = a_blendWeight.z;
+        if (blendWeight > 0.0)
+        {
+            matrixIndex = int(a_blendIndex.z) * 3;
+            matrixPalette1 += (_36.u_matrixPalette[matrixIndex] * blendWeight);
+            matrixPalette2 += (_36.u_matrixPalette[matrixIndex + 1] * blendWeight);
+            matrixPalette3 += (_36.u_matrixPalette[matrixIndex + 2] * blendWeight);
+            blendWeight = a_blendWeight.w;
+            if (blendWeight > 0.0)
+            {
+                matrixIndex = int(a_blendIndex.w) * 3;
+                matrixPalette1 += (_36.u_matrixPalette[matrixIndex] * blendWeight);
+                matrixPalette2 += (_36.u_matrixPalette[matrixIndex + 1] * blendWeight);
+                matrixPalette3 += (_36.u_matrixPalette[matrixIndex + 2] * blendWeight);
+            }
+        }
+    }
+    vec4 position = vec4(a_position, 1.0);
+    vec4 _skinnedPosition;
+    _skinnedPosition.x = dot(position, matrixPalette1);
+    _skinnedPosition.y = dot(position, matrixPalette2);
+    _skinnedPosition.z = dot(position, matrixPalette3);
+    _skinnedPosition.w = position.w;
+    return _skinnedPosition;
+}
+
+void main()
+{
+    vec4 position = getPosition();
+    gl_Position = _36.u_MVPMatrix * position;
+    v_texCoord = a_texCoord;
+    v_texCoord.y = 1.0 - v_texCoord.y;
+}
+

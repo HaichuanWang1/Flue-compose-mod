@@ -1,0 +1,37 @@
+#version 100
+precision mediump float;
+precision highp int;
+
+struct fs_ub
+{
+    highp vec4 u_startColor;
+    highp vec4 u_endColor;
+    highp vec2 u_center;
+    highp float u_radius;
+    highp float u_expand;
+};
+
+uniform fs_ub _17;
+
+varying highp vec4 v_position;
+
+void main()
+{
+    highp float d = distance(v_position.xy, _17.u_center) / _17.u_radius;
+    if (d <= 1.0)
+    {
+        if (d <= _17.u_expand)
+        {
+            gl_FragData[0] = _17.u_startColor;
+        }
+        else
+        {
+            gl_FragData[0] = mix(_17.u_startColor, _17.u_endColor, vec4((d - _17.u_expand) / (1.0 - _17.u_expand)));
+        }
+    }
+    else
+    {
+        gl_FragData[0] = vec4(0.0);
+    }
+}
+

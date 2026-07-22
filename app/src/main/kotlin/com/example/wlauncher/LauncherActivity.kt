@@ -27,11 +27,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -206,11 +210,19 @@ private fun AppListLoadingOverlay(modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxSize().background(Color(0xFF141416)),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "加载中...",
-            color = Color(0xFFA0A0A0),
-            fontSize = 14.sp
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(
+                color = Color(0xFFA0A0A0),
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "加载中...",
+                color = Color(0xFFA0A0A0),
+                fontSize = 12.sp
+            )
+        }
     }
 }
 
