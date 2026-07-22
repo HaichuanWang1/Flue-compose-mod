@@ -51,9 +51,15 @@ class WatchfaceBridgeManager(private val context: Context) {
     var wfLoadedCallback: (() -> Unit)? = null
 
     private val eventListener: (String, String) -> Unit = { event, _ ->
-        if (event == "wf_loaded") {
-            Log.i(TAG, "wf_loaded — watchface rendering started")
-            wfLoadedCallback?.invoke()
+        when (event) {
+            "wf_loaded" -> {
+                Log.i(TAG, "wf_loaded — watchface rendering started, re-pushing all data")
+                wfLoadedCallback?.invoke()
+                // Re-push all data now that the Lua engine is guaranteed ready.
+                // The initial pushAll() may have arrived before the Lua VM loaded
+                // watchface_bridge.lua (WatchfaceBridgeDispatch not yet defined).
+                if (isLuaReady) pushAll()
+            }
         }
     }
 
