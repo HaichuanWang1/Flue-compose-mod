@@ -69,13 +69,13 @@ class WatchfaceBridgeManager(private val context: Context) {
         registerBatteryReceiver()
         startHealth()
         LuaBridge.luaReadyHandler = {
-            Log.i(TAG, "Lua engine ready — pushing core data")
+            Log.i(TAG, "Lua engine ready — pushing settings with path")
             isLuaReady = true
+            // luaReadyCallback pushes settings(watchfacePath=...) via setWatchfacePath.
+            // Do NOT also call pushSettings() — the second push (without path)
+            // would overwrite the first and trigger loadDefault instead of the
+            // real watchface.
             luaReadyCallback?.invoke()
-            // pushAll() deferred to wf_loaded; only push settings (path) now
-            // so the watchface starts loading. Other data arrives once the
-            // face is built and WatchfaceBridgeDispatch exists.
-            pushSettings()
         }
         LuaBridge.addEventListner(eventListener)
     }

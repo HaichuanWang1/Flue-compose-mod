@@ -117,13 +117,20 @@ fun JbWatchFaceHost(
         }
     }
 
-    // Lifecycle-aware host pause/resume
+    // Lifecycle-aware host pause/resume — stop GL rendering when backgrounded
+    // to save battery, and cap at 1 FPS when the face is fully occluded.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> bridgeManager.onHostPause()
-                Lifecycle.Event.ON_RESUME -> bridgeManager.onHostResume()
+                Lifecycle.Event.ON_PAUSE -> {
+                    bridgeManager.onHostPause()
+                    CocosManager.onPause()
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    bridgeManager.onHostResume()
+                    CocosManager.onResume()
+                }
                 else -> {}
             }
         }
