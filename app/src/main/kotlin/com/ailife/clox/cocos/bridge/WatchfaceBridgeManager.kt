@@ -53,11 +53,16 @@ class WatchfaceBridgeManager(private val context: Context) {
     private val eventListener: (String, String) -> Unit = { event, _ ->
         when (event) {
             "wf_loaded" -> {
-                Log.i(TAG, "wf_loaded — re-pushing all data + starting periodic timer")
+                Log.i(TAG, "wf_loaded — pushing data (no settings) + starting periodic timer")
                 wfLoadedCallback?.invoke()
-                // Push all data now that WatchfaceBridgeDispatch is guaranteed defined.
+                // Push live data but NOT settings — settings carries watchfacePath
+                // which would trigger a redundant reload. The face is already loaded.
                 if (isLuaReady) {
-                    pushAll()
+                    sendToLua("device", DeviceInfoHelper.getInfo(context))
+                    pushBattery()
+                    sendToLua("system", SystemHelper.getState(context))
+                    pushStorage()
+                    pushAlarm()
                     handler.removeCallbacks(periodicRunnable)
                     handler.postDelayed(periodicRunnable, PERIODIC_INTERVAL_MS)
                 }
