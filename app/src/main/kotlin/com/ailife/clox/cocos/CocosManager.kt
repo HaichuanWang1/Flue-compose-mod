@@ -34,7 +34,7 @@ object CocosManager {
         NativeCrashHandler.install(activity.application)
         AxmolEngine.init(activity)
         val view = AxmolGLSurfaceView(activity)
-        view.setEGLConfigChooser(5, 6, 5, 0, 16, 8)
+        view.setEGLConfigChooser(8, 8, 8, 8, 24, 8)
         view.preserveEGLContextOnPause = true
         view.setRenderer(AxmolRenderer())
         glView = view

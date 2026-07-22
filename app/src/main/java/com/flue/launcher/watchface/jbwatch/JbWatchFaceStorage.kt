@@ -78,7 +78,12 @@ object JbWatchFaceStorage {
             // so sourceDirPath points to the top-level (easier cleanup, cleaner path).
             if (targetBase != finalDir) {
                 targetBase.listFiles()?.forEach { child ->
-                    child.renameTo(File(finalDir, child.name))
+                    val dst = File(finalDir, child.name)
+                    if (!child.renameTo(dst)) {
+                        // Same mount point, but guard against edge-case failures
+                        child.copyRecursively(dst, overwrite = true)
+                        child.deleteRecursively()
+                    }
                 }
                 targetBase.deleteRecursively()
             }
@@ -101,10 +106,16 @@ object JbWatchFaceStorage {
     }
 
     fun scan(context: Context): List<LunchWatchFaceDescriptor> {
+        fixBrokenImports(context)
+        migrateExternalToInternal(context)
         val results = mutableListOf<LunchWatchFaceDescriptor>()
         val seen = mutableSetOf<String>()
 
-        // Scan /sdcard/jbwatch/
+        // Scan /sdcard/jbwatch/ — faces still on external storage (migration
+        // may not have moved them if the copy failed). These paths can cause
+        // cc.FileUtils:isFileExist failures on Android 11+ scoped storage,
+        // so they are deprioritised in favour of the internal copies created
+        // by migrateExternalToInternal().
         val sdcard = android.os.Environment.getExternalStorageDirectory()
         val externalRoot = File(sdcard, "jbwatch")
         if (externalRoot.isDirectory) {
@@ -115,7 +126,8 @@ object JbWatchFaceStorage {
             }
         }
 
-        // Scan internal storage
+        // Scan internal storage — preferred: cc.FileUtils can always read
+        // from context.filesDir without scoped-storage restrictions.
         val internalRoot = File(context.filesDir, ROOT_FOLDER)
         if (internalRoot.isDirectory) {
             internalRoot.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
@@ -126,6 +138,86 @@ object JbWatchFaceStorage {
         }
 
         return results.sortedBy { it.displayName.lowercase(Locale.ROOT) }
+    }
+
+    /**
+     * Copy watchfaces from /sdcard/jbwatch/ to internal storage so that
+     * cc.FileUtils:isFileExist() can reliably find watch.xml on Android 11+
+     * (scoped storage blocks external-path access from native code).
+     * Already-migrated faces (same ID exists internally) are skipped.
+     */
+    private fun migrateExternalToInternal(context: Context) {
+        val sdcard = android.os.Environment.getExternalStorageDirectory()
+        val externalRoot = File(sdcard, "jbwatch")
+        if (!externalRoot.isDirectory) return
+
+        val internalRoot = File(context.filesDir, ROOT_FOLDER).apply { mkdirs() }
+
+        externalRoot.listFiles()?.filter { it.isDirectory }?.forEach { extDir ->
+            val hasWatch = File(extDir, "watch.xml").isFile || File(extDir, "watch.pxml").isFile
+            if (!hasWatch) return@forEach
+
+            val metadata = runCatching { parseMetadata(extDir) }.getOrNull() ?: return@forEach
+            val targetDir = File(internalRoot, sanitizeId(metadata.id))
+
+            // Skip if already migrated
+            if (targetDir.isDirectory && (File(targetDir, "watch.xml").isFile || File(targetDir, "watch.pxml").isFile)) {
+                return@forEach
+            }
+
+            try {
+                targetDir.deleteRecursively()
+                targetDir.mkdirs()
+                extDir.copyRecursively(targetDir, overwrite = true)
+                // Verify the copy succeeded before removing the external source
+                val copied = File(targetDir, "watch.xml").isFile || File(targetDir, "watch.pxml").isFile
+                if (copied) {
+                    extDir.deleteRecursively()
+                    Log.i(TAG, "Migrated '${metadata.title}' external → internal: ${targetDir.absolutePath}")
+                } else {
+                    Log.w(TAG, "Migration copy verification failed for '${metadata.title}'")
+                    targetDir.deleteRecursively()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Migration failed for '${metadata.title}': ${e.message}")
+                targetDir.deleteRecursively()
+            }
+        }
+    }
+
+    /**
+     * Fix watchfaces imported by old code where sourceDirPath pointed to a
+     * temporary directory (jbwatch_tmp_*) that was later deleted.
+     * Renames jbwatch_tmp_* dirs to their watch.xml title, deletes broken ones.
+     */
+    private fun fixBrokenImports(context: Context) {
+        val root = File(context.filesDir, ROOT_FOLDER)
+        if (!root.isDirectory) return
+        root.listFiles()?.filter { it.isDirectory && it.name.startsWith("jbwatch_tmp_") }?.forEach { dir ->
+            val hasWatchXml = File(dir, "watch.xml").isFile || File(dir, "watch.pxml").isFile
+            if (!hasWatchXml) {
+                Log.w(TAG, "Removing broken temp dir: ${dir.name}")
+                dir.deleteRecursively()
+                return@forEach
+            }
+            // Use watch.xml name attribute as the new directory name
+            val metadata = runCatching { parseMetadata(dir) }.getOrNull()
+            val title = metadata?.title?.takeIf { it.isNotBlank() && it != dir.name }
+            val newName = sanitizeId(title ?: dir.name.replace("jbwatch_tmp_", "watchface_"))
+            if (newName == dir.name) return@forEach  // nothing to fix
+            val newDir = File(root, newName)
+            if (newDir.exists() && newDir != dir) newDir.deleteRecursively()
+            // renameTo fails silently across mount points (cache → files).
+            // Fall back to copy + delete when rename doesn't stick.
+            if (dir.renameTo(newDir)) {
+                Log.i(TAG, "Fixed broken import: ${dir.name} → $newName")
+            } else if (dir.copyRecursively(newDir, overwrite = true)) {
+                dir.deleteRecursively()
+                Log.i(TAG, "Fixed broken import (copy): ${dir.name} → $newName")
+            } else {
+                Log.w(TAG, "Failed to fix broken import: ${dir.name}")
+            }
+        }
     }
 
     private fun parseMetadata(rootDir: File): JbWatchMetadata {
@@ -154,7 +246,11 @@ object JbWatchFaceStorage {
         }
         val preview = listOf("preview.jpg", "preview_dim.jpg")
             .firstOrNull { name -> File(rootDir, name).isFile }
-        val id = rootDir.name.ifBlank { title }
+        // Prefer the XML title as the ID (stable, human-readable); fall back
+        // to the directory name.  For flat ZIPs where rootDir is a temp
+        // directory (jbwatch_tmp_*) the directory name is meaningless, so the
+        // title-derived ID avoids creating directories with temp names.
+        val id = sanitizeId(title).ifBlank { rootDir.name }
         return JbWatchMetadata(id = id, title = title, summary = summary, rootDir = rootDir, previewFileName = preview)
     }
 
@@ -251,10 +347,20 @@ object JbWatchFaceStorage {
         }
     }
 
-    /** Resolve an output file for a name, stripping the sentinel suffix. */
+    /** Resolve an output file for a name, stripping the sentinel suffix.
+     *  Rejects path-traversal sequences (Zip Slip protection). */
     private fun outFileForName(name: String, targetRoot: File): File {
         val clean = name.replace(" [via getEntry]", "")
             .replace('\\', '/')
-        return File(targetRoot, clean)
+        val outFile = File(targetRoot, clean)
+        // Zip Slip guard: after resolving ".." the path must stay inside targetRoot.
+        // canonicalPath normalises "a/../b" → "a/b", so an escape shows up as a
+        // prefix mismatch.  This covers foo/../../X, .., ../.., and all variants.
+        val targetCanon = targetRoot.canonicalPath
+        val outCanon    = outFile.canonicalPath
+        if (!outCanon.startsWith(targetCanon + File.separator) && outCanon != targetCanon) {
+            throw SecurityException("Rejected unsafe ZIP entry: $name (escapes $targetCanon)")
+        }
+        return outFile
     }
 }

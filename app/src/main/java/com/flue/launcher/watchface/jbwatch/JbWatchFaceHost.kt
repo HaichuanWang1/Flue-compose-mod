@@ -135,12 +135,25 @@ fun JbWatchFaceHost(
     DisposableEffect(descriptor.stableKey, refreshToken) {
         try {
             if (activity != null) {
+                // Detect whether the engine is already running (Compose
+                // recomposition that reuses the live GL view). On a warm
+                // re-entry the Lua scene already sent wf_lua_ready during its
+                // onEnter and won't send it again — use reattach() to push
+                // the path immediately instead of waiting for a signal that
+                // will never arrive.
+                val engineWasLive = CocosManager.getGlView() != null
+
                 bridgeManager.start()
                 Log.i(TAG, "Bridge handler registered before engine start")
 
                 CocosManager.init(activity)
                 isEngineReady = true
                 Log.i(TAG, "CocosManager initialized, sourceDir=${descriptor.sourceDirPath}")
+
+                if (engineWasLive) {
+                    bridgeManager.reattach()
+                    Log.i(TAG, "Engine was already live — reattached bridge")
+                }
             } else {
                 Log.e(TAG, "Activity is null — cannot initialize Axmol")
             }
