@@ -78,7 +78,12 @@ object JbWatchFaceStorage {
             // so sourceDirPath points to the top-level (easier cleanup, cleaner path).
             if (targetBase != finalDir) {
                 targetBase.listFiles()?.forEach { child ->
-                    child.renameTo(File(finalDir, child.name))
+                    val dst = File(finalDir, child.name)
+                    if (!child.renameTo(dst)) {
+                        // Same mount point, but guard against edge-case failures
+                        child.copyRecursively(dst, overwrite = true)
+                        child.deleteRecursively()
+                    }
                 }
                 targetBase.deleteRecursively()
             }
@@ -241,7 +246,11 @@ object JbWatchFaceStorage {
         }
         val preview = listOf("preview.jpg", "preview_dim.jpg")
             .firstOrNull { name -> File(rootDir, name).isFile }
-        val id = rootDir.name.ifBlank { title }
+        // Prefer the XML title as the ID (stable, human-readable); fall back
+        // to the directory name.  For flat ZIPs where rootDir is a temp
+        // directory (jbwatch_tmp_*) the directory name is meaningless, so the
+        // title-derived ID avoids creating directories with temp names.
+        val id = sanitizeId(title).ifBlank { rootDir.name }
         return JbWatchMetadata(id = id, title = title, summary = summary, rootDir = rootDir, previewFileName = preview)
     }
 
@@ -338,10 +347,15 @@ object JbWatchFaceStorage {
         }
     }
 
-    /** Resolve an output file for a name, stripping the sentinel suffix. */
+    /** Resolve an output file for a name, stripping the sentinel suffix.
+     *  Rejects path-traversal sequences (Zip Slip protection). */
     private fun outFileForName(name: String, targetRoot: File): File {
         val clean = name.replace(" [via getEntry]", "")
             .replace('\\', '/')
+        // Zip Slip guard: reject ".." components that could escape targetRoot
+        if (clean.contains("/../") || clean.startsWith("../") || clean == "..") {
+            throw SecurityException("Rejected unsafe ZIP entry: $name")
+        }
         return File(targetRoot, clean)
     }
 }
