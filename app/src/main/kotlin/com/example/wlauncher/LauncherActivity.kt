@@ -95,6 +95,9 @@ import com.flue.launcher.watchface.BUILT_IN_WATCHFACE_ID
 import com.flue.launcher.watchface.BuiltInWatchFaceOptions
 import com.flue.launcher.watchface.LunchWatchFaceDescriptor
 import com.flue.launcher.watchface.LunchWatchFaceHost
+import com.flue.launcher.watchface.LunchWatchFaceType
+import com.flue.launcher.watchface.jbwatch.JbWatchFaceHost
+import dev.axmol.lib.AxmolEngine
 import androidx.compose.animation.core.Spring
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -109,10 +112,18 @@ private const val APP_RETURN_MAINTENANCE_DELAY_MS = 260L
 private const val APP_LIST_LAYER_RELEASE_HOLD_MS = 32L
 private const val LAUNCH_MASK_EXIT_RETAIN_MS = 260L
 
-class LauncherActivity : ComponentActivity() {
+class LauncherActivity : ComponentActivity(), AxmolEngine.AxmolEngineListener {
 
     private lateinit var vm: LauncherViewModel
     private var deferredResumeMaintenance: Runnable? = null
+
+    override fun showDialog(pTitle: String, pMessage: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle(pTitle)
+            .setMessage(pMessage)
+            .setPositiveButton("OK", null)
+            .show()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1228,6 +1239,23 @@ private fun LauncherWatchFaceContent(
                     screenState == ScreenState.Face &&
                     !sideSceneOverlayActive
                 ) lockScreenWithAccessibility else null
+            )
+        } else if (watchFace.type == LunchWatchFaceType.JBWATCH) {
+            JbWatchFaceHost(
+                descriptor = watchFace,
+                isFaceVisible = isFaceVisible,
+                refreshToken = watchFaceRefreshToken,
+                onLongPress = null,
+                onDoubleTap = if (
+                    doubleTapLockScreenEnabled &&
+                    launcherInteractive &&
+                    screenState == ScreenState.Face &&
+                    !sideSceneOverlayActive
+                ) lockScreenWithAccessibility else null,
+                onLoadFailure = { descriptor, error ->
+                    val rootCause = generateSequence(error) { it.cause }.last()
+                    vm.fallbackToBuiltIn("${descriptor.displayName}: ${rootCause.message ?: rootCause.javaClass.simpleName}")
+                }
             )
         } else {
             Box(modifier = Modifier.fillMaxSize()) {

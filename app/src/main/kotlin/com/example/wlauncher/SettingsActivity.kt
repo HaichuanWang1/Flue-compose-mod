@@ -121,6 +121,7 @@ import com.dudu.wearlauncher.utils.ILog
 import com.flue.launcher.backup.FlueBackupOptions
 import com.flue.launcher.backup.FlueBackupPreview
 import com.flue.launcher.service.FlueAccessibilityService
+import com.flue.launcher.StoreActivity
 import com.flue.launcher.ui.common.bottomFisheyeScale
 import com.flue.launcher.ui.controlcenter.MusicTextSwitchAnimations
 import com.flue.launcher.ui.drawer.vibrateHaptic
@@ -145,6 +146,7 @@ import com.flue.launcher.watchface.BuiltInWatchFaceOptions
 import com.flue.launcher.watchface.InternalWatchFaceStorage
 import com.flue.launcher.watchface.LunchWatchFaceDescriptor
 import com.flue.launcher.watchface.LunchWatchFaceRuntime
+import com.flue.launcher.watchface.LunchWatchFaceType
 import java.text.SimpleDateFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -433,7 +435,7 @@ private fun SettingsRootScreen(
                 backupBusy = true
                 backupProgress = BlockingProgressState(
                     title = "导入表盘",
-                    detail = "公开版已移除表盘导入"
+                    detail = "正在解压并安装 .watch 表盘"
                 )
                 val result = vm.importWatchFaceArchive(uri = uri)
                 result
@@ -566,7 +568,7 @@ private fun SettingsRootScreen(
             title = { Text("删除表盘") },
             text = {
                 Text(
-                    "删除 ${target.displayName}？这个旧版导入表盘会从 Flue 私有目录移除。"
+                    "删除 ${target.displayName}？该表盘将被永久移除。"
                 )
             },
             confirmButton = {
@@ -961,7 +963,7 @@ private fun SettingsRootScreen(
                     } else {
                         null
                     },
-                    onDelete = if (descriptor.isDingDingCat) {
+                    onDelete = if (descriptor.type == LunchWatchFaceType.JBWATCH || descriptor.isDingDingCat) {
                         { dingDingCatDeleteTarget = descriptor }
                     } else {
                         null
@@ -981,12 +983,21 @@ private fun SettingsRootScreen(
             item("watchface_import_archive") {
                 ActionCard(
                     title = "导入表盘",
-                    subtitle = "公开版已移除表盘导入",
+                    subtitle = "从 .watch 文件导入 JB 表盘",
                     scale = itemFisheye(listState, "watchface_import_archive", screenCenterY, screenHeightPx),
                     icon = { Icon(Icons.Filled.Add, contentDescription = null, tint = WatchColors.ActiveCyan) },
-                    onClick = {},
+                    onClick = { dingDingCatZipPicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
                     onLongPress = {},
                     longPressDurationMs = 2_000L
+                )
+            }
+            item("watchface_store") {
+                ActionCard(
+                    title = "表盘商店",
+                    subtitle = "浏览并下载社区表盘",
+                    scale = itemFisheye(listState, "watchface_store", screenCenterY, screenHeightPx),
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null, tint = WatchColors.ActiveCyan) },
+                    onClick = { StoreActivity.launch(context) }
                 )
             }
             item("watchface_more") {

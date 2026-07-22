@@ -11,7 +11,8 @@ const val WATCHFACE_REFRESH_ACTION = "com.flue.launcher.action.WATCHFACE_REFRESH
 enum class LunchWatchFaceType {
     BUILTIN,
     EXTERNAL,
-    DINGDINGCAT
+    DINGDINGCAT,
+    JBWATCH
 }
 
 data class LunchWatchFaceDescriptor(

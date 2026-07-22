@@ -51,6 +51,8 @@ import com.flue.launcher.watchface.WatchFacePhotoCache
 import com.flue.launcher.watchface.LunchWatchFaceDescriptor
 import com.flue.launcher.watchface.LunchWatchFaceRegistry
 import com.flue.launcher.watchface.LunchWatchFaceScanner
+import com.flue.launcher.watchface.jbwatch.JBWATCH_ID_PREFIX
+import com.flue.launcher.watchface.jbwatch.JbWatchFaceStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1989,7 +1991,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         uri: Uri,
         allowDingDingCat: Boolean = false
     ): Result<LunchWatchFaceDescriptor> {
-        return Result.failure(UnsupportedOperationException("公开版已移除表盘导入"))
+        return runCatching {
+            val context = getApplication<Application>()
+            val descriptor = withContext(Dispatchers.IO) {
+                JbWatchFaceStorage.importArchive(context, uri)
+            }
+            finishImportedWatchFaceImport(descriptor)
+        }
     }
 
     private suspend fun finishImportedWatchFaceImport(descriptor: LunchWatchFaceDescriptor): LunchWatchFaceDescriptor {
@@ -2054,8 +2062,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     suspend fun deleteImportedWatchFace(id: String): Result<Unit> {
-        return runCatching {
-            error("公开版已移除导入表盘删除")
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val context = getApplication<Application>()
+                val descriptor = _availableWatchFaces.value.firstOrNull { it.id == id }
+                    ?: error("表盘未找到")
+                if (!JbWatchFaceStorage.delete(context, descriptor)) {
+                    error("删除失败")
+                }
+                refreshWatchFaces(force = true)
+            }
         }
     }
 
@@ -2088,7 +2104,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private fun scanAllWatchFaces(): List<LunchWatchFaceDescriptor> {
         val context = getApplication<Application>()
         return LunchWatchFaceScanner.builtInDescriptors() +
-            LunchWatchFaceScanner.scanInstalled(context)
+            LunchWatchFaceScanner.scanInstalled(context) +
+            JbWatchFaceStorage.scan(context)
     }
 
     private fun publishWatchFaces(watchFaces: List<LunchWatchFaceDescriptor>) {
@@ -2787,7 +2804,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun isImportedArchiveId(id: String): Boolean {
-        return false
+        return id.startsWith(JBWATCH_ID_PREFIX)
     }
 
     private fun refreshIcons() {
