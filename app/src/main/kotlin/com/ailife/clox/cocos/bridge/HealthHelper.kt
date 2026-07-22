@@ -24,6 +24,7 @@ class HealthHelper(context: Context) : SensorEventListener {
         private const val STRIDE_KM = 0.000762
         private const val KCAL_PER_STEP = 0.04
         private const val DEFAULT_STEP_GOAL = 10000
+        private const val HR_COOLDOWN_MS = 60 * 60 * 1000L // 1 hour
     }
 
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -42,10 +43,6 @@ class HealthHelper(context: Context) : SensorEventListener {
     private val hrHistory = mutableListOf<Pair<Int, Long>>() // (bpm, timestamp)
     private var hrStableCount = 0
     private var lastHrValue: Int = 0
-
-    companion object {
-        private const val HR_COOLDOWN_MS = 60 * 60 * 1000L // 1 hour
-    }
 
     // ── Steps ─────────────────────────────────────────────────────────────────
 
