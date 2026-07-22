@@ -53,12 +53,14 @@ class WatchfaceBridgeManager(private val context: Context) {
     private val eventListener: (String, String) -> Unit = { event, _ ->
         when (event) {
             "wf_loaded" -> {
-                Log.i(TAG, "wf_loaded — watchface rendering started, re-pushing all data")
+                Log.i(TAG, "wf_loaded — re-pushing all data + starting periodic timer")
                 wfLoadedCallback?.invoke()
-                // Re-push all data now that the Lua engine is guaranteed ready.
-                // The initial pushAll() may have arrived before the Lua VM loaded
-                // watchface_bridge.lua (WatchfaceBridgeDispatch not yet defined).
-                if (isLuaReady) pushAll()
+                // Push all data now that WatchfaceBridgeDispatch is guaranteed defined.
+                if (isLuaReady) {
+                    pushAll()
+                    handler.removeCallbacks(periodicRunnable)
+                    handler.postDelayed(periodicRunnable, PERIODIC_INTERVAL_MS)
+                }
             }
         }
     }
@@ -67,11 +69,13 @@ class WatchfaceBridgeManager(private val context: Context) {
         registerBatteryReceiver()
         startHealth()
         LuaBridge.luaReadyHandler = {
-            Log.i(TAG, "Lua engine ready — pushing all data")
+            Log.i(TAG, "Lua engine ready — pushing core data")
             isLuaReady = true
             luaReadyCallback?.invoke()
-            pushAll()
-            handler.postDelayed(periodicRunnable, PERIODIC_INTERVAL_MS)
+            // pushAll() deferred to wf_loaded; only push settings (path) now
+            // so the watchface starts loading. Other data arrives once the
+            // face is built and WatchfaceBridgeDispatch exists.
+            pushSettings()
         }
         LuaBridge.addEventListner(eventListener)
     }
@@ -79,13 +83,16 @@ class WatchfaceBridgeManager(private val context: Context) {
     /**
      * Fast-path reattach: the Lua engine is already running (activity
      * recreation / Compose recomposition that reuses the live GL view).
+     * Set isLuaReady so sendToLua() works, but do NOT push data yet —
+     * the Lua VM may not have loaded watchface_bridge.lua at this point.
+     * Data is pushed in the wf_loaded handler once the face is ready.
      */
     fun reattach() {
-        Log.i(TAG, "reattach — engine already live, pushing path immediately")
+        Log.i(TAG, "reattach — engine already live")
         isLuaReady = true
         luaReadyCallback?.invoke()
-        pushAll()
-        handler.postDelayed(periodicRunnable, PERIODIC_INTERVAL_MS)
+        // pushAll() deferred to wf_loaded handler — WatchfaceBridgeDispatch
+        // may not be defined yet (scripts load asynchronously after GL init).
     }
 
     fun stop() {
