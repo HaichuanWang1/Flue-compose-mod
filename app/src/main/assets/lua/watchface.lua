@@ -69,9 +69,10 @@ local function extractWatchface(watchPath)
 
     -- If watchPath is already an extracted directory containing watch.xml,
     -- use it directly — no unzip needed. This is the path the Kotlin-side
-    -- JbWatchFaceStorage.importArchive() copies into /sdcard/jbwatch/<id>/.
+    -- JbWatchFaceStorage.importArchive() copies into internal storage
+    -- (context.filesDir/jbwatch_faces/<id>/).
     -- Ensure trailing slash so downstream path concatenation works.
-    -- NOTE: Use cc.FileUtils (not io.open) for Android external storage compat.
+    -- NOTE: Use cc.FileUtils (not io.open) for Android storage compat.
     local _fu = cc.FileUtils:getInstance()
     local function hasWatchXml(dir)
         return _fu:isFileExist(dir .. "/watch.xml")

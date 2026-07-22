@@ -164,7 +164,15 @@ object JbWatchFaceStorage {
                 targetDir.deleteRecursively()
                 targetDir.mkdirs()
                 extDir.copyRecursively(targetDir, overwrite = true)
-                Log.i(TAG, "Migrated '${metadata.title}' from external → internal: ${targetDir.absolutePath}")
+                // Verify the copy succeeded before removing the external source
+                val copied = File(targetDir, "watch.xml").isFile || File(targetDir, "watch.pxml").isFile
+                if (copied) {
+                    extDir.deleteRecursively()
+                    Log.i(TAG, "Migrated '${metadata.title}' external → internal: ${targetDir.absolutePath}")
+                } else {
+                    Log.w(TAG, "Migration copy verification failed for '${metadata.title}'")
+                    targetDir.deleteRecursively()
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Migration failed for '${metadata.title}': ${e.message}")
                 targetDir.deleteRecursively()
@@ -194,8 +202,15 @@ object JbWatchFaceStorage {
             if (newName == dir.name) return@forEach  // nothing to fix
             val newDir = File(root, newName)
             if (newDir.exists() && newDir != dir) newDir.deleteRecursively()
+            // renameTo fails silently across mount points (cache → files).
+            // Fall back to copy + delete when rename doesn't stick.
             if (dir.renameTo(newDir)) {
                 Log.i(TAG, "Fixed broken import: ${dir.name} → $newName")
+            } else if (dir.copyRecursively(newDir, overwrite = true)) {
+                dir.deleteRecursively()
+                Log.i(TAG, "Fixed broken import (copy): ${dir.name} → $newName")
+            } else {
+                Log.w(TAG, "Failed to fix broken import: ${dir.name}")
             }
         }
     }
