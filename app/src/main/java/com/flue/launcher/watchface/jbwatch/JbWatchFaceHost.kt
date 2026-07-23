@@ -180,14 +180,25 @@ fun JbWatchFaceHost(
                     }
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    resumeHandler.postDelayed({
-                        // 先恢复渲染，再显示 surface
+                    val pm = context.getSystemService(android.content.Context.POWER_SERVICE)
+                            as android.os.PowerManager
+                    if (pm.isInteractive) {
+                        // 息屏→点亮：立即恢复，避免黑屏
                         if (isEngineReady) {
                             dev.axmol.lib.AxmolRenderer.setFreezeFrame(false)
                         }
                         CocosManager.getGlView()?.visibility = android.view.View.VISIBLE
                         bridgeManager.onHostResume()
-                    }, 1000)
+                    } else {
+                        // 从其他应用返回：延迟恢复，让过渡动画先完成
+                        resumeHandler.postDelayed({
+                            if (isEngineReady) {
+                                dev.axmol.lib.AxmolRenderer.setFreezeFrame(false)
+                            }
+                            CocosManager.getGlView()?.visibility = android.view.View.VISIBLE
+                            bridgeManager.onHostResume()
+                        }, 1000)
+                    }
                 }
                 else -> {}
             }
