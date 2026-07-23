@@ -162,35 +162,38 @@ fun JbWatchFaceHost(
         }
     }
 
-    // Lifecycle: 后台降至 1 FPS，恢复时延迟 700ms 再全速
-    // 让 Compose UI 重组先完成，避免两个渲染线程同时抢 CPU
+    // Lifecycle: 后台降至 1 FPS + 暂停 bridge 定时器
+    // 恢复时不做任何同步工作 — 避免在过渡期动画期间阻塞主线程
+    // setForceLowFps(false) 由 LaunchedEffect(isFaceVisible) 处理（line 120）
+    // bridge 恢复由下方 DisposableEffect(isFaceVisible) 处理
     val lifecycleOwner = LocalLifecycleOwner.current
-    val resumeHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
                     bridgeManager.onHostPause()
-                    resumeHandler.removeCallbacksAndMessages(null)
                     if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
-                }
-                Lifecycle.Event.ON_RESUME -> {
-                    if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
-                    resumeHandler.postDelayed({
-                        if (isEngineReady && isFaceVisible) {
-                            dev.axmol.lib.AxmolRenderer.setForceLowFps(false)
-                        }
-                        bridgeManager.onHostResume()
-                    }, 700)
                 }
                 else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            resumeHandler.removeCallbacksAndMessages(null)
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
+    }
+
+    // Bridge 定时器: 表盘可见时启动，不可见时暂停
+    // 替代原 LifecycleEventObserver ON_RESUME 中的延迟恢复
+    DisposableEffect(isFaceVisible, isEngineReady) {
+        if (isEngineReady) {
+            if (isFaceVisible) {
+                bridgeManager.onHostResume()
+            } else {
+                bridgeManager.onHostPause()
+            }
+        }
+        onDispose { }
     }
 
     // Initialize Axmol engine on first composition

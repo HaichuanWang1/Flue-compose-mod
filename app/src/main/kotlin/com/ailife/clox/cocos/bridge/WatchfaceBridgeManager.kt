@@ -86,6 +86,7 @@ class WatchfaceBridgeManager(private val context: Context) {
 
     fun onHostPause() { handler.removeCallbacks(periodicRunnable) }
     fun onHostResume() {
+        handler.removeCallbacks(periodicRunnable) // 防止重复定时器
         if (isLuaReady) handler.postDelayed(periodicRunnable, PERIODIC_INTERVAL_MS)
     }
 
