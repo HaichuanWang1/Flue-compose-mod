@@ -162,18 +162,21 @@ fun JbWatchFaceHost(
         }
     }
 
-    // Lifecycle: screen off → pause GL, screen on → resume
+    // Lifecycle: 息屏时降 1 FPS（不暂停 GL，避免恢复时上下文丢失导致卡顿）
+    // bridge 仍走 onHostPause/onHostResume 停止/恢复定时器。
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
                     bridgeManager.onHostPause()
-                    CocosManager.onPause()
+                    if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     bridgeManager.onHostResume()
-                    CocosManager.onResume()
+                    if (isEngineReady && isFaceVisible) {
+                        dev.axmol.lib.AxmolRenderer.setForceLowFps(false)
+                    }
                 }
                 else -> {}
             }
@@ -181,7 +184,6 @@ fun JbWatchFaceHost(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            CocosManager.onResume()  // defensive: prevent GL thread stuck
         }
     }
 
