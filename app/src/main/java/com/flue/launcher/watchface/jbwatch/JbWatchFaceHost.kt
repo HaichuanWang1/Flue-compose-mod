@@ -162,8 +162,7 @@ fun JbWatchFaceHost(
         }
     }
 
-    // Lifecycle: 息屏时降 1 FPS（不暂停 GL，避免恢复时上下文丢失导致卡顿）
-    // bridge 仍走 onHostPause/onHostResume 停止/恢复定时器。
+    // Lifecycle: 后台降至 1 FPS，延迟恢复避免主线程拥堵
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -173,10 +172,13 @@ fun JbWatchFaceHost(
                     if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    bridgeManager.onHostResume()
                     if (isEngineReady && isFaceVisible) {
                         dev.axmol.lib.AxmolRenderer.setForceLowFps(false)
                     }
+                    // 延迟 500ms 恢复 bridge 定时器，避免和 Compose 重组争抢主线程
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        bridgeManager.onHostResume()
+                    }, 500)
                 }
                 else -> {}
             }
