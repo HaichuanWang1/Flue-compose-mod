@@ -156,7 +156,11 @@ class LauncherActivity : ComponentActivity(), AxmolEngine.AxmolEngineListener {
         super.onNewIntent(intent)
         setIntent(intent)
         if (::vm.isInitialized && intent.isLauncherHomeIntent()) {
-            vm.requestHomePress()
+            // 仅在 Launcher 已在前台时处理 Home 键切换
+            // 从外部应用返回时由 onResume() 的 onReturnToLauncher() 处理
+            if (vm.launcherInteractive.value) {
+                vm.requestHomePress()
+            }
         }
     }
 
