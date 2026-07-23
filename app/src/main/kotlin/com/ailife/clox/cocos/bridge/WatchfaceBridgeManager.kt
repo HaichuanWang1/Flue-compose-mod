@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.format.DateFormat
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.ailife.clox.cocos.CocosManager
 import com.ailife.clox.cocos.LuaBridge
 import org.json.JSONObject
@@ -34,6 +35,7 @@ class WatchfaceBridgeManager(private val context: Context) {
     private var batteryReceiver: BroadcastReceiver? = null
     private var isLuaReady = false
     private var healthHelper: HealthHelper? = null
+    private var hscStepHelper: HscStepHelper? = null
     private val handler = Handler(Looper.getMainLooper())
     private val periodicRunnable = object : Runnable {
         override fun run() {
@@ -63,6 +65,9 @@ class WatchfaceBridgeManager(private val context: Context) {
                     sendToLua("system", SystemHelper.getState(context))
                     pushStorage()
                     pushAlarm()
+                    // Re-push health data (steps callback may have fired before isLuaReady)
+                    hscStepHelper?.push()
+                    healthHelper?.pushHeartRate()
                     handler.removeCallbacks(periodicRunnable)
                     handler.postDelayed(periodicRunnable, PERIODIC_INTERVAL_MS)
                 }
@@ -180,19 +185,24 @@ class WatchfaceBridgeManager(private val context: Context) {
     // ── Health (steps + heart rate via SensorManager) ─────────────────────────
 
     private fun startHealth() {
-        val helper = HealthHelper(context)
-        healthHelper = helper
-        helper.startSteps { stepsJson ->
+        // Steps: HSC HSystemAssist (proprietary) → standard sensor fallback
+        val stepHelper = HscStepHelper(context)
+        hscStepHelper = stepHelper
+        stepHelper.start { stepsJson ->
             sendToLua("health_steps", stepsJson)
         }
-        helper.startHeartRate { hrJson ->
+        // Heart rate: standard TYPE_HEART_RATE sensor
+        val hrHelper = HealthHelper(context)
+        healthHelper = hrHelper
+        hrHelper.startHeartRate { hrJson ->
             sendToLua("health_heartRate", hrJson)
         }
-        // Trigger an initial HR measurement
-        helper.measureHeartRate()
+        hrHelper.measureHeartRate()
     }
 
     private fun stopHealth() {
+        hscStepHelper?.stop()
+        hscStepHelper = null
         healthHelper?.stopHeartRate()
         healthHelper = null
     }
@@ -206,7 +216,7 @@ class WatchfaceBridgeManager(private val context: Context) {
             }
         }
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        context.registerReceiver(batteryReceiver, filter)
+        ContextCompat.registerReceiver(context, batteryReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
     }
 
     private fun unregisterBatteryReceiver() {
