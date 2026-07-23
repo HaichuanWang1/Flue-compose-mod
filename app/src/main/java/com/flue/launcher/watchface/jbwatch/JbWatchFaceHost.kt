@@ -2,7 +2,6 @@ package com.flue.launcher.watchface.jbwatch
 
 import android.app.Activity
 import android.graphics.BitmapFactory
-import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.animation.core.animateFloatAsState
@@ -48,6 +47,13 @@ private const val TAG = "JbWatchFaceHost"
 private const val OVERLAY_FADE_OUT_MS = 400
 private const val SAFETY_TIMEOUT_MS = 15_000L
 
+// Face occlusion overlay — covers the GL surface when the face is hidden
+// (app list, notifications, etc.). SurfaceView doesn't support Compose alpha
+// compositing, so we fade a black overlay on top instead.
+private const val FACE_OCCLUSION_ALPHA = 0.78f  // matches Material style face alpha=0.22
+private const val OCCLUSION_FADE_IN_MS = 300    // face → hidden
+private const val OCCLUSION_FADE_OUT_MS = 200   // hidden → face (faster for snappy return)
+
 @Composable
 fun JbWatchFaceHost(
     descriptor: LunchWatchFaceDescriptor,
@@ -87,21 +93,61 @@ fun JbWatchFaceHost(
         label = "overlayAlpha"
     )
 
+    // ── Face occlusion overlay (app list / notifications covering the face) ──
+    // SurfaceView doesn't respond to Compose graphicsLayer alpha, so we simulate
+    // the fade by overlaying a black Box. Keep 1 FPS during the fade-in animation,
+    // restore normal FPS only after the overlay is fully opaque (avoids a flash of
+    // the fully-bright face during the brief moment the overlay hasn't covered it).
+    var occlusionAnimDone by remember { mutableStateOf(false) }
+    var animatingToHidden by remember { mutableStateOf(false) }
+
+    val faceOverlayAlpha by animateFloatAsState(
+        targetValue = if (isFaceVisible) 0f else FACE_OCCLUSION_ALPHA,
+        animationSpec = tween(
+            durationMillis = if (isFaceVisible) OCCLUSION_FADE_OUT_MS else OCCLUSION_FADE_IN_MS
+        ),
+        finishedListener = {
+            // Fade-in complete: overlay fully covers the surface → safe to drop to 1 FPS
+            if (animatingToHidden) {
+                occlusionAnimDone = true
+                animatingToHidden = false
+            }
+        },
+        label = "faceOverlayAlpha"
+    )
+
+    // Track fade-in animation lifecycle
+    LaunchedEffect(isFaceVisible) {
+        if (!isFaceVisible) {
+            // Starting fade-in: keep full FPS until overlay is opaque
+            animatingToHidden = true
+            occlusionAnimDone = false
+            if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(false)
+        } else {
+            // Returning: cancel any pending fade-in state, start fade-out
+            animatingToHidden = false
+            occlusionAnimDone = false
+            if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(false)
+        }
+    }
+
+    // Drop to 1 FPS after fade-in completes (not during — avoids flash)
+    LaunchedEffect(occlusionAnimDone) {
+        if (occlusionAnimDone && !isFaceVisible && isEngineReady) {
+            dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
+        }
+    }
+
     // Create bridge manager FIRST, register handler BEFORE engine starts
     val bridgeManager = remember(descriptor.stableKey, refreshToken) {
         WatchfaceBridgeManager(context).apply {
             luaReadyCallback = {
-                Log.i(TAG, "Lua ready — pushing path: ${descriptor.sourceDirPath}")
                 val path = descriptor.sourceDirPath ?: ""
                 if (path.isNotBlank()) {
                     setWatchfacePath(path)
-                    Log.i(TAG, "Watchface path pushed: $path")
-                } else {
-                    Log.w(TAG, "No watchface path to push!")
                 }
             }
             wfLoadedCallback = {
-                Log.i(TAG, "wf_loaded — hiding loading overlay")
                 showOverlay = false
             }
         }
@@ -112,53 +158,85 @@ fun JbWatchFaceHost(
         showOverlay = true
         delay(SAFETY_TIMEOUT_MS)
         if (showOverlay) {
-            Log.w(TAG, "Safety timeout — forcing overlay hide")
             showOverlay = false
         }
     }
 
-    // Lifecycle-aware host pause/resume
+    // Lifecycle: 后台冻结帧（保留最后一帧），延迟恢复渲染
+    // 冻结后 nativeRender() 完全跳过，GPU 零占用，最后一帧静止显示
+    // 过渡动画期间 GPU 全部让给系统动画
     val lifecycleOwner = LocalLifecycleOwner.current
+    val resumeHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> bridgeManager.onHostPause()
-                Lifecycle.Event.ON_RESUME -> bridgeManager.onHostResume()
+                Lifecycle.Event.ON_PAUSE -> {
+                    bridgeManager.onHostPause()
+                    resumeHandler.removeCallbacksAndMessages(null)
+                    // 冻结最后一帧：nativeRender() 停止，SurfaceView 保持最后画面
+                    if (isEngineReady) {
+                        dev.axmol.lib.AxmolRenderer.setFreezeFrame(true)
+                    }
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    // 延迟恢复渲染 — 过渡动画约 300ms，给它充足时间
+                    resumeHandler.postDelayed({
+                        if (isEngineReady) {
+                            dev.axmol.lib.AxmolRenderer.setFreezeFrame(false)
+                        }
+                    }, 500)
+                }
                 else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            resumeHandler.removeCallbacksAndMessages(null)
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Bridge 定时器: 表盘可见时启动，不可见时暂停
+    DisposableEffect(isFaceVisible, isEngineReady) {
+        if (isEngineReady) {
+            if (isFaceVisible) {
+                bridgeManager.onHostResume()
+            } else {
+                bridgeManager.onHostPause()
+            }
+        }
+        onDispose { }
+    }
+
+    // Activity resume 时也需要恢复 bridge（isFaceVisible 可能没变化）
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && isEngineReady) {
+                bridgeManager.onHostResume()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     // Initialize Axmol engine on first composition
     DisposableEffect(descriptor.stableKey, refreshToken) {
         try {
             if (activity != null) {
-                // Detect whether the engine is already running (Compose
-                // recomposition that reuses the live GL view). On a warm
-                // re-entry the Lua scene already sent wf_lua_ready during its
-                // onEnter and won't send it again — use reattach() to push
-                // the path immediately instead of waiting for a signal that
-                // will never arrive.
                 val engineWasLive = CocosManager.getGlView() != null
 
                 bridgeManager.start()
-                Log.i(TAG, "Bridge handler registered before engine start")
 
                 CocosManager.init(activity)
                 isEngineReady = true
-                Log.i(TAG, "CocosManager initialized, sourceDir=${descriptor.sourceDirPath}")
 
                 if (engineWasLive) {
                     bridgeManager.reattach()
-                    Log.i(TAG, "Engine was already live — reattached bridge")
                 }
-            } else {
-                Log.e(TAG, "Activity is null — cannot initialize Axmol")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize Axmol", e)
             loadError = e
         }
 
@@ -177,11 +255,10 @@ fun JbWatchFaceHost(
         val path = descriptor.sourceDirPath ?: ""
         if (path.isBlank()) return@LaunchedEffect
         delay(2_000)
-        Log.i(TAG, "Fallback: pushing watchface path after timeout: $path")
         bridgeManager.setWatchfacePath(path)
     }
 
-    // Main content: GL surface + loading overlay on top
+    // Main content: GL surface + occlusion overlay + loading overlay
     Box(modifier = modifier.fillMaxSize()) {
         when {
             isEngineReady -> {
@@ -217,6 +294,16 @@ fun JbWatchFaceHost(
             }
         }
 
+        // Face occlusion overlay: simulates SurfaceView alpha fade
+        if (faceOverlayAlpha > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = faceOverlayAlpha }
+                    .background(Color.Black)
+            )
+        }
+
         // Loading overlay: small preview + spinner + "加载中" + fade-out
         if (overlayAlpha > 0f) {
             Box(
@@ -227,7 +314,6 @@ fun JbWatchFaceHost(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    // Small preview image
                     if (previewBitmap != null) {
                         Image(
                             bitmap = previewBitmap.asImageBitmap(),
@@ -239,14 +325,12 @@ fun JbWatchFaceHost(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                     }
-                    // Spinning loader
                     CircularProgressIndicator(
                         color = Color.White,
                         strokeWidth = 3.dp,
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    // "加载中" text
                     Text(
                         "加载中...",
                         color = Color.White.copy(alpha = 0.8f),

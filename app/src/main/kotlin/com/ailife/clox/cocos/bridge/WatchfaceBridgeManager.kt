@@ -1,10 +1,11 @@
 package com.ailife.clox.cocos.bridge
 
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import android.os.Handler
+import android.os.Looper
 import android.text.format.DateFormat
 import android.util.Log
 import com.ailife.clox.cocos.CocosManager
@@ -12,81 +13,84 @@ import com.ailife.clox.cocos.LuaBridge
 import org.json.JSONObject
 
 /**
- * Minimal bridge manager — only the data categories that drive rendering.
- *
- * Core (always pushed):
- *   settings  → triggers watchfacePath load in Lua
- *   battery   → common {bl} {bp} tags
- *   system    → is24h for time formatting
- *
- * Deferred (disabled until core is proven working):
- *   health_*, weather, sensor_*, calendar, storage, alarm,
- *   network, connectivity, notification, location, timezones
+ * Bridge manager — coordinates all data pushes to the Lua watchface engine.
  */
 class WatchfaceBridgeManager(private val context: Context) {
     companion object {
         private const val TAG = "WatchfaceBridgeMgr"
+        private const val PERIODIC_INTERVAL_MS = 60_000L
     }
 
     private var batteryLevel = 100
-    private var batteryReceiver: BroadcastReceiver? = null
     private var isLuaReady = false
+    private var healthHelper: HealthHelper? = null
+    private var hscStepHelper: HscStepHelper? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val periodicRunnable = object : Runnable {
+        override fun run() {
+            if (!isLuaReady) return
+            pushBattery()
+            pushStorage()
+            pushAlarm()
+            hscStepHelper?.push()
+            handler.postDelayed(this, PERIODIC_INTERVAL_MS)
+        }
+    }
 
-    /** Called when Lua engine signals readiness (wf_lua_ready event). */
     var luaReadyCallback: (() -> Unit)? = null
-
-    /** Called when Lua finishes loading a watchface (wf_loaded event). */
     var wfLoadedCallback: (() -> Unit)? = null
 
     private val eventListener: (String, String) -> Unit = { event, _ ->
-        if (event == "wf_loaded") {
-            Log.i(TAG, "wf_loaded — watchface rendering started")
-            wfLoadedCallback?.invoke()
+        when (event) {
+            "wf_loaded" -> {
+                Log.i(TAG, "wf_loaded — pushing data + starting periodic timer")
+                wfLoadedCallback?.invoke()
+                if (isLuaReady) {
+                    sendToLua("device", DeviceInfoHelper.getInfo(context))
+                    pushBattery()
+                    sendToLua("system", SystemHelper.getState(context))
+                    pushStorage()
+                    pushAlarm()
+                    hscStepHelper?.push()
+                    healthHelper?.pushHeartRate()
+                    handler.removeCallbacks(periodicRunnable)
+                    handler.postDelayed(periodicRunnable, PERIODIC_INTERVAL_MS)
+                }
+            }
         }
     }
 
     fun start() {
-        registerBatteryReceiver()
+        startHealth()
         LuaBridge.luaReadyHandler = {
-            Log.i(TAG, "Lua engine ready — pushing core data")
+            Log.i(TAG, "Lua engine ready — pushing settings with path")
             isLuaReady = true
             luaReadyCallback?.invoke()
-            pushCore()
         }
         LuaBridge.addEventListner(eventListener)
     }
 
-    /**
-     * Fast-path reattach: the Lua engine is already running (activity
-     * recreation / Compose recomposition that reuses the live GL view).
-     * Skip waiting for wf_lua_ready — it was already sent during the
-     * scene's onEnter and won't fire again. Push the path and core data
-     * immediately so the face reloads without a 2 s fallback delay.
-     */
     fun reattach() {
-        Log.i(TAG, "reattach — engine already live, pushing path immediately")
+        Log.i(TAG, "reattach — engine already live")
         isLuaReady = true
         luaReadyCallback?.invoke()
-        pushCore()
     }
 
     fun stop() {
-        unregisterBatteryReceiver()
+        handler.removeCallbacks(periodicRunnable)
+        stopHealth()
         LuaBridge.luaReadyHandler = null
         LuaBridge.removeEventListener(eventListener)
         isLuaReady = false
     }
 
-    fun onHostPause() { /* no-op for now */ }
-    fun onHostResume() { /* no-op for now */ }
-
-    // ── Core data push (rendering essentials only) ────────────────────────────
-
-    private fun pushCore() {
-        pushSettings()
-        pushBattery()
-        pushSystem()
+    fun onHostPause() { handler.removeCallbacks(periodicRunnable) }
+    fun onHostResume() {
+        handler.removeCallbacks(periodicRunnable) // 防止重复定时器
+        if (isLuaReady) handler.postDelayed(periodicRunnable, PERIODIC_INTERVAL_MS)
     }
+
+    // ── Data push ─────────────────────────────────────────────────────────────
 
     fun setWatchfacePath(path: String) {
         Log.i(TAG, "setWatchfacePath: $path")
@@ -96,13 +100,8 @@ class WatchfaceBridgeManager(private val context: Context) {
         })
     }
 
-    private fun pushSettings() {
-        sendToLua("settings", JSONObject().apply {
-            put("is24", DateFormat.is24HourFormat(context))
-        })
-    }
-
     private fun pushBattery() {
+        // Sticky broadcast — no receiver needed, avoids RECEIVER_EXPORTED issues
         val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) ?: 0
         val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
@@ -124,29 +123,35 @@ class WatchfaceBridgeManager(private val context: Context) {
         })
     }
 
-    private fun pushSystem() {
-        sendToLua("system", JSONObject().apply {
-            put("is24h", DateFormat.is24HourFormat(context))
-        })
+    private fun pushStorage() {
+        sendToLua("storage", StorageHelper.getInfo(context))
     }
 
-    // ── Battery receiver (live updates) ───────────────────────────────────────
-
-    private fun registerBatteryReceiver() {
-        batteryReceiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context, intent: Intent) {
-                pushBattery()
-            }
-        }
-        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        context.registerReceiver(batteryReceiver, filter)
+    private fun pushAlarm() {
+        sendToLua("alarm", AlarmHelper.getInfo(context))
     }
 
-    private fun unregisterBatteryReceiver() {
-        batteryReceiver?.let {
-            try { context.unregisterReceiver(it) } catch (_: Exception) {}
+    // ── Health (steps + heart rate) ────────────────────────────────────────────
+
+    private fun startHealth() {
+        val stepHelper = HscStepHelper(context)
+        hscStepHelper = stepHelper
+        stepHelper.start { stepsJson ->
+            sendToLua("health_steps", stepsJson)
         }
-        batteryReceiver = null
+        val hrHelper = HealthHelper(context)
+        healthHelper = hrHelper
+        hrHelper.startHeartRate { hrJson ->
+            sendToLua("health_heartRate", hrJson)
+        }
+        hrHelper.measureHeartRate()
+    }
+
+    private fun stopHealth() {
+        hscStepHelper?.stop()
+        hscStepHelper = null
+        healthHelper?.stopHeartRate()
+        healthHelper = null
     }
 
     // ── Lua dispatch ──────────────────────────────────────────────────────────

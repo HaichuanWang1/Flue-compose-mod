@@ -6,10 +6,20 @@
 -keep class io.github.proify.lyricon.** { *; }
 -keepclassmembers class io.github.proify.lyricon.** { *; }
 
-# Axmol engine — native code calls these via JNI
+# Axmol engine — native code calls these via JNI (runtime registration)
+# -keep class alone is insufficient under proguard-android-optimize.txt;
+# R8's optimizer can still rewrite call sites. Keep all members + native methods.
 -keep class dev.axmol.lib.** { *; }
+-keepclassmembers class dev.axmol.lib.** {
+    native <methods>;
+}
+-keep class dev.axmol.lib.AxmolEngine$AxmolEngineListener { *; }
+
+# CloX bridge — Kotlin object (singleton) + JNI bridge
 -keep class com.ailife.clox.cocos.** { *; }
--keep class com.ailife.clox.cocos.bridge.** { *; }
+-keepclassmembers class com.ailife.clox.cocos.** {
+    native <methods>;
+}
 
 # LuaBridge.onLuaEvent is called from native (JNI)
 -keepclassmembers class com.ailife.clox.cocos.LuaBridge {
