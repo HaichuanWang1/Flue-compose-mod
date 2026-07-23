@@ -160,6 +160,8 @@ class LauncherActivity : ComponentActivity(), AxmolEngine.AxmolEngineListener {
         }
     }
 
+    private var deferredInteractive: Runnable? = null
+
     override fun onResume() {
         super.onResume()
         RecentsVisibility.apply(this)
@@ -167,14 +169,24 @@ class LauncherActivity : ComponentActivity(), AxmolEngine.AxmolEngineListener {
             applyFadeCloseTransition()
         }
         if (::vm.isInitialized) {
-            vm.setLauncherInteractive(true)
-            vm.onReturnToLauncher()
+            // 推迟状态变更到过渡动画之后，避免重组阻塞主线程
+            val task = Runnable {
+                deferredInteractive = null
+                if (::vm.isInitialized) {
+                    vm.setLauncherInteractive(true)
+                    vm.onReturnToLauncher()
+                }
+            }
+            deferredInteractive = task
+            window.decorView.post(task)
             scheduleDeferredResumeMaintenance()
         }
     }
 
     override fun onPause() {
         super.onPause()
+        deferredInteractive?.let(window.decorView::removeCallbacks)
+        deferredInteractive = null
         deferredResumeMaintenance?.let(window.decorView::removeCallbacks)
         deferredResumeMaintenance = null
         if (::vm.isInitialized) {
