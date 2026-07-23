@@ -1321,7 +1321,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         if (launchingExternalApp) {
             launchingExternalApp = false
             _currentLaunchIcon.value = null
-            _screenState.value = returnStateAfterExternalLaunch
+            // 从外部应用返回时始终进入应用列表，而非直接到表盘
+            // 这样遮挡层完全覆盖 GL 表盘，SurfaceView 窗口不干扰过渡动画
+            _screenState.value = ScreenState.Apps
             _revealedNotificationTarget.value = null
         }
     }

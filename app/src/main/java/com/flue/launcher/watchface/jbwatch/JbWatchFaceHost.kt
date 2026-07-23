@@ -163,9 +163,10 @@ fun JbWatchFaceHost(
     }
 
     // Lifecycle: 后台降至 1 FPS + 暂停 bridge 定时器
-    // 恢复时不做任何同步工作 — 避免在过渡期动画期间阻塞主线程
-    // setForceLowFps(false) 由 LaunchedEffect(isFaceVisible) 处理（line 120）
-    // bridge 恢复由下方 DisposableEffect(isFaceVisible) 处理
+    // 从外部应用返回时直接进入应用列表（见 onReturnToLauncher），
+    // 遮挡层覆盖 GL 表盘，SurfaceView 不干扰过渡动画
+    // setForceLowFps(false) 由 LaunchedEffect(isFaceVisible) 处理
+    // bridge 恢复由 DisposableEffect(isFaceVisible) 处理
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
