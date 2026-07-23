@@ -118,6 +118,9 @@ fun JbWatchFaceHost(
     }
 
     // Lifecycle: 息屏时暂停 GL 渲染，亮屏时恢复
+    // 用 DisposableEffect(lifecycleOwner) 而非 DisposableEffect(Unit) 确保
+    // lifecycleOwner 变化时重新注册。ON_RESUME 时总是调 onResume()，
+    // 即使 pause 未配对（防御性恢复）。
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -125,16 +128,24 @@ fun JbWatchFaceHost(
                 Lifecycle.Event.ON_PAUSE -> {
                     bridgeManager.onHostPause()
                     CocosManager.onPause()
+                    Log.d(TAG, "ON_PAUSE — GL paused")
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     bridgeManager.onHostResume()
                     CocosManager.onResume()
+                    Log.d(TAG, "ON_RESUME — GL resumed")
                 }
                 else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            // 防御性恢复：onDispose 时如果 GL 仍处于暂停状态，
+            // 恢复它以防下次 composable 重建时 GL 线程卡死。
+            CocosManager.onResume()
+            Log.d(TAG, "onDispose — defensive GL resume")
+        }
     }
 
     // 遮挡降帧：app 列表/通知/控件覆盖时降至 1 FPS，恢复时回到正常帧率
