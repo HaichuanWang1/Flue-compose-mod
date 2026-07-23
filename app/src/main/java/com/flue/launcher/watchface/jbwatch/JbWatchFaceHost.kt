@@ -162,29 +162,33 @@ fun JbWatchFaceHost(
         }
     }
 
-    // Lifecycle: 后台降至 1 FPS，延迟恢复避免主线程拥堵
+    // Lifecycle: 后台降至 1 FPS，恢复时延迟 700ms 再全速
+    // 让 Compose UI 重组先完成，避免两个渲染线程同时抢 CPU
     val lifecycleOwner = LocalLifecycleOwner.current
+    val resumeHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
                     bridgeManager.onHostPause()
+                    resumeHandler.removeCallbacksAndMessages(null)
                     if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (isEngineReady && isFaceVisible) {
-                        dev.axmol.lib.AxmolRenderer.setForceLowFps(false)
-                    }
-                    // 延迟 500ms 恢复 bridge 定时器，避免和 Compose 重组争抢主线程
-                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
+                    resumeHandler.postDelayed({
+                        if (isEngineReady && isFaceVisible) {
+                            dev.axmol.lib.AxmolRenderer.setForceLowFps(false)
+                        }
                         bridgeManager.onHostResume()
-                    }, 500)
+                    }, 700)
                 }
                 else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            resumeHandler.removeCallbacksAndMessages(null)
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
