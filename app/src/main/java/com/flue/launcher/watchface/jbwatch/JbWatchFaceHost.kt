@@ -162,30 +162,41 @@ fun JbWatchFaceHost(
         }
     }
 
-    // Lifecycle: 后台降至 1 FPS + 暂停 bridge 定时器
-    // 从外部应用返回时直接进入应用列表（见 onReturnToLauncher），
-    // 遮挡层覆盖 GL 表盘，SurfaceView 不干扰过渡动画
-    // setForceLowFps(false) 由 LaunchedEffect(isFaceVisible) 处理
-    // bridge 恢复由 DisposableEffect(isFaceVisible) 处理
+    // Lifecycle: 后台冻结帧（保留最后一帧），延迟恢复渲染
+    // 冻结后 nativeRender() 完全跳过，GPU 零占用，最后一帧静止显示
+    // 过渡动画期间 GPU 全部让给系统动画
     val lifecycleOwner = LocalLifecycleOwner.current
+    val resumeHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
                     bridgeManager.onHostPause()
-                    if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
+                    resumeHandler.removeCallbacksAndMessages(null)
+                    // 冻结最后一帧：nativeRender() 停止，SurfaceView 保持最后画面
+                    if (isEngineReady) {
+                        dev.axmol.lib.AxmolRenderer.setFreezeFrame(true)
+                    }
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    // 延迟恢复渲染 — 过渡动画约 300ms，给它充足时间
+                    resumeHandler.postDelayed({
+                        if (isEngineReady) {
+                            dev.axmol.lib.AxmolRenderer.setFreezeFrame(false)
+                        }
+                    }, 500)
                 }
                 else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            resumeHandler.removeCallbacksAndMessages(null)
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
     // Bridge 定时器: 表盘可见时启动，不可见时暂停
-    // 替代原 LifecycleEventObserver ON_RESUME 中的延迟恢复
     DisposableEffect(isFaceVisible, isEngineReady) {
         if (isEngineReady) {
             if (isFaceVisible) {
@@ -195,6 +206,19 @@ fun JbWatchFaceHost(
             }
         }
         onDispose { }
+    }
+
+    // Activity resume 时也需要恢复 bridge（isFaceVisible 可能没变化）
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && isEngineReady) {
+                bridgeManager.onHostResume()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     // Initialize Axmol engine on first composition
