@@ -117,8 +117,7 @@ fun JbWatchFaceHost(
         }
     }
 
-    // Lifecycle-aware host pause/resume — stop GL rendering when backgrounded
-    // to save battery, and cap at 1 FPS when the face is fully occluded.
+    // Lifecycle: 息屏时暂停 GL 渲染，亮屏时恢复
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -136,6 +135,13 @@ fun JbWatchFaceHost(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 遮挡降帧：app 列表/通知/控件覆盖时降至 1 FPS，恢复时回到正常帧率
+    LaunchedEffect(isFaceVisible) {
+        if (isEngineReady) {
+            dev.axmol.lib.AxmolRenderer.setForceLowFps(!isFaceVisible)
+        }
     }
 
     // Initialize Axmol engine on first composition
