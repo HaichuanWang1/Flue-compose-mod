@@ -172,16 +172,22 @@ fun JbWatchFaceHost(
                 Lifecycle.Event.ON_PAUSE -> {
                     bridgeManager.onHostPause()
                     resumeHandler.removeCallbacksAndMessages(null)
-                    if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
+                    // 设 INVISIBLE — 阻止系统销毁 SurfaceView 的 surface
+                    // surface 重建是主线程阻塞500ms+的根因
+                    CocosManager.getGlView()?.visibility = android.view.View.INVISIBLE
+                    if (isEngineReady) {
+                        dev.axmol.lib.AxmolRenderer.setFreezeFrame(true)
+                    }
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (isEngineReady) dev.axmol.lib.AxmolRenderer.setForceLowFps(true)
                     resumeHandler.postDelayed({
-                        if (isEngineReady && isFaceVisible) {
-                            dev.axmol.lib.AxmolRenderer.setForceLowFps(false)
+                        // 先恢复渲染，再显示 surface
+                        if (isEngineReady) {
+                            dev.axmol.lib.AxmolRenderer.setFreezeFrame(false)
                         }
+                        CocosManager.getGlView()?.visibility = android.view.View.VISIBLE
                         bridgeManager.onHostResume()
-                    }, 700)
+                    }, 1000)
                 }
                 else -> {}
             }

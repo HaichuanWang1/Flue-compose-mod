@@ -103,6 +103,21 @@ public class AxmolRenderer implements GLSurfaceView.Renderer {
     }
 
     private static volatile boolean sForceLowFps = false;
+    private static volatile boolean sFreezeFrame = false;
+
+    /**
+     * Freeze the last rendered frame: skip nativeRender() entirely.
+     * The SurfaceView keeps displaying the last frame while the GL thread
+     * idles (no CPU/GPU work). Used during activity transitions to avoid
+     * GPU competition with system transition animations.
+     * Unlike setForceLowFps(true), this does NOT render 1 FPS — zero frames.
+     * Critically, the GL thread stays alive and the surface is preserved,
+     * preventing EGL context loss on devices that don't support preserveEGLContextOnPause.
+     */
+    public static void setFreezeFrame(boolean freeze) {
+        sFreezeFrame = freeze;
+        if (!freeze) kickFrame();
+    }
 
     /**
      * Hard-cap rendering at 1 FPS while {@code force} is true, overriding both
@@ -156,7 +171,9 @@ public class AxmolRenderer implements GLSurfaceView.Renderer {
         /*
          * Render time MUST be counted in, or the FPS will slower than appointed.
          */
-        AxmolRenderer.nativeRender();
+        if (!sFreezeFrame) {
+            AxmolRenderer.nativeRender();
+        }
         /*
          * No need to use algorithm in default(60,90,120... FPS) situation,
          * since onDrawFrame() was called by system 60 times per second by default.
