@@ -166,12 +166,17 @@ fun JbWatchFaceHost(
     // 让 Compose UI 重组先完成，避免两个渲染线程同时抢 CPU
     val lifecycleOwner = LocalLifecycleOwner.current
     val resumeHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    // 记录 ON_PAUSE 时屏幕是否灭着 — 用于 ON_RESUME 区分息屏点亮 vs 从应用返回
+    var wasScreenOff by remember { mutableStateOf(false) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
                     bridgeManager.onHostPause()
                     resumeHandler.removeCallbacksAndMessages(null)
+                    val pm = context.getSystemService(android.content.Context.POWER_SERVICE)
+                            as android.os.PowerManager
+                    wasScreenOff = !pm.isInteractive
                     // 设 INVISIBLE — 阻止系统销毁 SurfaceView 的 surface
                     // surface 重建是主线程阻塞500ms+的根因
                     CocosManager.getGlView()?.visibility = android.view.View.INVISIBLE
@@ -180,10 +185,9 @@ fun JbWatchFaceHost(
                     }
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    val pm = context.getSystemService(android.content.Context.POWER_SERVICE)
-                            as android.os.PowerManager
-                    if (pm.isInteractive) {
+                    if (wasScreenOff) {
                         // 息屏→点亮：立即恢复，避免黑屏
+                        wasScreenOff = false
                         if (isEngineReady) {
                             dev.axmol.lib.AxmolRenderer.setFreezeFrame(false)
                         }
