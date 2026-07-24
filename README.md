@@ -1,6 +1,7 @@
 # Flue-compose-mod
 
-Flue-compose 增强修改版。在原版基础上新增以下功能：
+
+Flue-compose 增强修改版。在原版基础上新增以下功能（本作大量使用vibecoding代码不美观请见谅）：
 
 加入了不完整的jbwatch表盘支持，内置下载功能
 
